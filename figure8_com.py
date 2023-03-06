@@ -1,7 +1,6 @@
 #!/usr/bin/python
 
 # * Simplified complex trajectory tracking in OFFBOARD mode
-# * Copyright (C) 2019 Copter Express Technologies
 # *
 # * Author: Sean Smith <s.smith@dal.ca>
 # *
