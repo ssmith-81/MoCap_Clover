@@ -19,8 +19,7 @@ import tf
 import numpy as np
 
 # Could plot the stored data in SITL (not hardware) if desired:
-# import matplotlib
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 
 from time import sleep
@@ -273,36 +272,63 @@ class clover:
 			k = k+1
 			if k >= self.STEPS: 
 				self.navigate_wait(z=self.FLIGHT_ALTITUDE, yaw=float('nan'), speed=0.5, frame_id = self.FRAME)
-				#rospy.sleep(5)
 				break
 			rr.sleep()
 
-		# Wait for 5 seconds
-		rospy.sleep(2)
+		# Wait for 3 seconds
+		rospy.sleep(3)
 		# Perform landing
 		
 		res = land()
 		 
 		if res.success:
 			print('Drone is landing')
+			
 		#res = fcuModes()
 		#res.setAutoLandMode()
 
-		rospy.sleep(6)
-		# Debug section, need matplotlib to plot the results
-		#plt.plot(t,velx)
-		#plt.plot(t,posx)
-		#plt.plot(t,afx)
-		#plt.plot(t,yawc)
-		#plt.plot(t,yaw_ratec)
-		#plt.show()
+
+		# Debug section, need matplotlib to plot the results for SITL
+		plt.figure(1)
+		plt.subplot(211)
+		plt.plot(t,posx,'r',label='x-pos')
+		plt.plot(t,posy,'b--',label='y-pos')
+		plt.plot(t,posz,'g:',label='z-pos')
+		plt.legend()
+		plt.grid(True)
+		plt.ylabel('Position [m]')
+		plt.subplot(212)
+		plt.plot(t,velx,'r',label='x-vel')
+		plt.plot(t,vely,'b--',label='y-vel')
+		plt.plot(t,velz,'g:',label='z-vel')
+		plt.legend()
+		plt.grid(True)
+		plt.ylabel('Velocity [m/s]')
+		plt.xlabel('Time [s]')
+
+		plt.figure(2)
+		plt.subplot(211)
+		plt.plot(t, afx,'r',label='x-acc')
+		plt.plot(t, afy,'b--',label='y-acc')
+		plt.plot(t, afz,'g:',label='z-acc')
+		plt.ylabel('af [m/s^2]')
+		plt.legend()
+		plt.grid(True)
+		plt.subplot(212)
+		plt.plot(t,yawc,'r',label='yaw')
+		plt.ylabel('Magnitude')
+		plt.xlabel('Time [s]')
+		plt.plot(t,yaw_ratec,'b--',label='yaw_rate')
+		plt.legend()
+		plt.grid(True)
+		plt.show()
 		
-		rospy.spin() # press control + C, the node will stop.
+		# rospy.spin() # press control + C, the node will stop.
 
 if __name__ == '__main__':
 	try:
 		# Define the performance parameters here which starts the script
-		q=clover(FLIGHT_ALTITUDE = 1.0, RATE = 50, RADIUS = 0.8, CYCLE_S = 27, REF_FRAME = 'aruco_map')
+		q=clover(FLIGHT_ALTITUDE = 1.0, RATE = 50, RADIUS = 1, CYCLE_S = 18, REF_FRAME = 'aruco_map')
 		
 		q.main()
 		
