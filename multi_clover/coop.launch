@@ -1,0 +1,9 @@
+
+<launch>
+
+	<node pkg="coop_flight" type="leader.py" name="Leader" output="screen"/>
+	
+	<node pkg="coop_flight" type="follower_drone.py" name="follower_drone" output="screen"/>
+
+</launch>
+	
