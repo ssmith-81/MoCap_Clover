@@ -16,6 +16,9 @@ import math
 from geometry_msgs.msg import Point, PoseStamped, TwistStamped
 import tf
 from std_msgs.msg import String
+from sensor_msgs.msg import Imu
+
+from tf.transformations import euler_from_quaternion
 
 import numpy as np
 
@@ -107,15 +110,59 @@ class clover:
 		
 		# Subscribe to drone state. Can use this to subscribe to the drone state with mavros, although the get_telemetry Clover function does this (does it?)
 		self.state = rospy.Subscriber('mavros/state', State, self.updateState)
+		
+		# The get_telemety does not retreive body frame attitude or position :( therefore we need to get it from another topic
+		self.body = rospy.Subscriber('/clover0/mavros/imu/data',Imu, self.updateIMU)
+		
+		# The get_telemety does not retreive body frame velocity :( therefore we need to get it from another topic
+		self.vel_body = rospy.Subscriber('/clover0/mavros/local_position/velocity_body',TwistStamped, self.update_velbody)
+		
+		#self.current_IMU = Imu()
+		# Define object to publish for the follower (if not using mocap or central system)
+		self.follow = PositionTarget() # this will be mixed with inertial frame data and body frame (for what is needed for the formation algorithm)
+		
+		self.follow.header.frame_id = 'mixed'  # Define the frame that will be used
+			
+		self.follow.coordinate_frame = 1 #MAV_FRAME_BODY_NED  # =8
+			
+		self.follow.type_mask = 0  # use everything!
+						# PositionTarget::IGNORE_VX +
+						# PositionTarget::IGNORE_VY +
+						# PositionTarget::IGNORE_VZ +
+						# PositionTarget::IGNORE_AFX +
+						# PositionTarget::IGNORE_AFY +
+						# PositionTarget::IGNORE_AFZ +
+						# PositionTarget::IGNORE_YAW;
 
 		self.current_state = State()
 		self.rate = rospy.Rate(20)
 
 	def updateState(self, msg):
-		self.current_state = msg
+		t = msg
 		
 	# generate a path following Bernoulli's lemiscate as a parametric equation
         # note this is in ENU coordinates (x right, y forward, z up) since mavros will convert to NED.
+        
+	def updateIMU(self, msg):
+        	# extract quaternion components from msg
+		quaternion = [msg.orientation.x, msg.orientation.y,msg.orientation.z, msg.orientation.w]
+        	
+		euler_angles = euler_from_quaternion(quaternion) # Body frame angles (using IMU)
+        	
+        	# Extract yaw angle (in radians)
+        	
+        	# Gather yaw for publishing (in body frame)
+		#self.follow.yaw = euler_angles[2]
+		
+		self.follow.yaw_rate = msg.angular_velocity.z  # yaw_rate in body frame
+		
+	def update_velbody(self, data):
+		txt = data
+		# Gather velocity for publishing (in the body frame)
+		self.follow.velocity.x = data.twist.linear.x
+		self.follow.velocity.y = data.twist.linear.y
+		self.follow.velocity.z = data.twist.linear.z
+		#print(data.twist.linear.x, data.twist.linear.y, data.twist.linear.z)
         
 	def navigate_wait(self,x=0, y=0, z=0, yaw=float('nan'), yaw_rate=0, speed=0.5, frame_id='body', tolerance=0.2, auto_arm=False):
 
@@ -173,7 +220,7 @@ class clover:
 		for i in range(0, self.STEPS):
 		
 			# calculate the parameter 'a' which is an angle sweeping from -pi/2 to 3pi/2
-			# through the figure-8 curve. 
+			# through the circle curve. 
 			a = (-math.pi/2) + i*(math.pi*2/self.STEPS)
 			# These are definitions that will make position, velocity, and acceleration calulations easier:
 			c = math.cos(a)
@@ -192,23 +239,23 @@ class clover:
 			
 			# Position
 			# https:#www.wolframalpha.com/input/?i=%28-r*cos%28a%29*sin%28a%29%29%2F%28%28sin%28a%29%5E2%29%2B1%29
-			posx[i] = -(r*c*s) / sspo
+			posx[i] = r*c
 			# https:#www.wolframalpha.com/input/?i=%28r*cos%28a%29%29%2F%28%28sin%28a%29%5E2%29%2B1%29
-			posy[i] =  (r*c)   / sspo
+			posy[i] = r*s
 			posz[i] =  self.FLIGHT_ALTITUDE
 
 			# Velocity
 			# https:#www.wolframalpha.com/input/?i=derivative+of+%28-r*cos%28a%29*sin%28a%29%29%2F%28%28sin%28a%29%5E2%29%2B1%29+wrt+a
-			velx[i] =   dadt*r* ( ss*ss + ss + (ssmo*cc) ) / sspos
+			velx[i] =  -dadt*r*s
 			# https:#www.wolframalpha.com/input/?i=derivative+of+%28r*cos%28a%29%29%2F%28%28sin%28a%29%5E2%29%2B1%29+wrt+a
-			vely[i] =  -dadt*r* s*( ss + 2.0*cc + 1.0 )    / sspos
+			vely[i] =  dadt*r*c
 			velz[i] =  0.0
 
 			# Acceleration
 			# https:#www.wolframalpha.com/input/?i=second+derivative+of+%28-r*cos%28a%29*sin%28a%29%29%2F%28%28sin%28a%29%5E2%29%2B1%29+wrt+a
-			afx[i] =  -dadt*dadt*8.0*r*s*c*((3.0*c2a) + 7.0)/ c2am3_cubed
+			afx[i] =  -dadt*dadt*c
 			# https:#www.wolframalpha.com/input/?i=second+derivative+of+%28r*cos%28a%29%29%2F%28%28sin%28a%29%5E2%29%2B1%29+wrt+a
-			afy[i] =  dadt*dadt*r*c*((44.0*c2a) + c4a - 21.0) / c2am3_cubed
+			afy[i] =  -dadt*dadt*r*s
 			afz[i] =  0.0
 
 			# calculate yaw as direction of velocity vector:
@@ -277,46 +324,38 @@ class clover:
 			target.yaw_rate = yaw_ratec[k]
 			
 			# Publish to the setpoint topic
+			
 			self.publisher.publish(target)
 			
 			# Publish to follower---------------------------------------------------
-			telem = get_telemetry(frame_id='map')
-			follow.header.frame_id = self.FRAME  # Define the frame that will be used
-			
-			follow.coordinate_frame = 1 #MAV_FRAME_LOCAL_NED  # =1
-			
-			follow.type_mask = 0  # Use everything!
-						# PositionTarget::IGNORE_VX +
-						# PositionTarget::IGNORE_VY +
-						# PositionTarget::IGNORE_VZ +
-						# PositionTarget::IGNORE_AFX +
-						# PositionTarget::IGNORE_AFY +
-						# PositionTarget::IGNORE_AFZ +
-						# PositionTarget::IGNORE_YAW;
+			telem = get_telemetry(frame_id='map') # Want pose data in the inertial frame
+			#telem_body = get_telemetry(frame_id='body') # Want the attitude rate data in the body frame
+		
 
-			# Gather position for publishing
-			follow.position.x = telem.x
-			follow.position.y = telem.y
-			follow.position.z = telem.z
+			# Gather position for publishing (in the inertial frame)
+			self.follow.position.x = telem.x
+			self.follow.position.y = telem.y
+			self.follow.position.z = telem.z
 			
 			# Gather velocity for publishing
-			follow.velocity.x = telem.vx
-			follow.velocity.y = telem.vy
-			follow.velocity.z = telem.vz
+			#self.follow.velocity.x = telem.vx
+			#self.follow.velocity.y = telem.vy
+			#self.follow.velocity.z = telem.vz
 			
 			# Gather acceleration for publishing (set acceleration as trajectory one now)
-			follow.acceleration_or_force.x = afx[k]
-			follow.acceleration_or_force.y = afy[k]
-			follow.acceleration_or_force.z = afz[k]
+			self.follow.acceleration_or_force.x = afx[k]
+			self.follow.acceleration_or_force.y = afy[k]
+			self.follow.acceleration_or_force.z = afz[k]
 			
 			# Gather yaw for publishing
-			follow.yaw = telem.yaw
-			
-			# Gather yaw rate for publishing
-			follow.yaw_rate = telem.yaw_rate
+			self.follow.yaw = telem.yaw
+			#print(telem.yaw)
+			# Gather yaw rate for publishing (get in the body frame)
+			#self.follow.yaw_rate = telem.yaw_rate#telem_body.yaw_rate
 			
 			# Publish to the setpoint topic
-			self.follower.publish(follow)
+			
+			self.follower.publish(self.follow)
 		
 		
 			# This loop initializes when the figure-8 is complete, therefore it will navigate back to the origin and setpoint publishing will be continued as needed to avoid entering failsafe mode.
@@ -346,7 +385,7 @@ class clover:
 if __name__ == '__main__':
 	try:
 		# Define the performance parameters here which starts the script
-		q=clover(FLIGHT_ALTITUDE = 1.0, RATE = 50, RADIUS = 1.5, CYCLE_S = 18, REF_FRAME = 'map')
+		q=clover(FLIGHT_ALTITUDE = 1.0, RATE = 50, RADIUS = 2.0, CYCLE_S = 14, REF_FRAME = 'map')
 		
 		q.main()
 		
