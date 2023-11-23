@@ -50,38 +50,7 @@ release = rospy.ServiceProxy('/clover0/simple_offboard/release', Trigger)
 # Deine math parameter
 PI_2 = math.pi/2
 
-# This class defines a few mavros services that can be used, although the Clover services automatically
-# take care of these actions including arming for offboard
 
-# maybe add some more that are usable? confirm they are usable just for more illustration prposes
-class fcuModes:
-
-	def __init__(self):
-		pass
-
-	def setArm(self):
-		rospy.wait_for_service('mavros/cmd/arming')
-		try:
-			armService = rospy.ServiceProxy('mavros/cmd/arming', mavros_msgs.srv.CommandBool)
-			armService(True)
-		except rospy.ServiceException as e:
-			print ("Service arming call failed: %s")
-
-	def setOffboardMode(self):
-		rospy.wait_for_service('mavros/set_mode')
-		try:
-			flightModeService = rospy.ServiceProxy('mavros/set_mode', mavros_msgs.srv.SetMode)
-			flightModeService(custom_mode='OFFBOARD')
-		except rospy.ServiceException as e:
-			print ("service set_mode call failed: %s. Offboard Mode could not be set.")
-			
-	def setAutoLandMode(self):
-		rospy.wait_for_service('mavros/set_mode')
-		try:
-			flightModeService = rospy.ServiceProxy('mavros/set_mode', mavros_msgs.srv.SetMode)
-			flightModeService(custom_mode='AUTO.LAND')
-		except rospy.ServiceException as e:
-			print ('service set_mode call failed: %s. Autoland Mode could not be set.')
 			
 # This class categorizes all of the functions used for complex rajectory tracking
 class clover:
@@ -347,11 +316,9 @@ class clover:
 			self.follow.acceleration_or_force.y = afy[k]
 			self.follow.acceleration_or_force.z = afz[k]
 			
-			# Gather yaw for publishing
+			# Gather yaw for publishing		
 			self.follow.yaw = telem.yaw
 			#print(telem.yaw)
-			# Gather yaw rate for publishing (get in the body frame)
-			#self.follow.yaw_rate = telem.yaw_rate#telem_body.yaw_rate
 			
 			# Publish to the setpoint topic
 			
@@ -385,7 +352,7 @@ class clover:
 if __name__ == '__main__':
 	try:
 		# Define the performance parameters here which starts the script
-		q=clover(FLIGHT_ALTITUDE = 1.0, RATE = 50, RADIUS = 2.0, CYCLE_S = 14, REF_FRAME = 'map')
+		q=clover(FLIGHT_ALTITUDE = 1.0, RATE = 50, RADIUS = 2.0, CYCLE_S = 13, REF_FRAME = 'map')
 		
 		q.main()
 		
