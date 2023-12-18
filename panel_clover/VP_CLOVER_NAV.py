@@ -137,6 +137,7 @@ x_1 = np.zeros(len(y_range))
 y_1 = np.zeros(len(x_range))
 Xsl = np.concatenate((x_1, x_range))
 Ysl = np.concatenate((np.flip(y_range), y_1))
+XYsl = np.vstack((Xsl,Ysl)).T
 
 # Generate the grid points
 Xgrid = np.linspace(xVals[0], xVals[1], nGridX)
@@ -147,7 +148,9 @@ Vxe = np.zeros((nGridX, nGridY))
 Vye = np.zeros((nGridX, nGridY))
 
 # Path to figure out if grid point is inside polygon or not
-AF = np.vstack((xa.T,ya.T)).T
+#AF = np.vstack((xa.T,ya.T)).T
+AF = np.vstack((xa,ya)).T
+#print(AF)
 afPath = path.Path(AF)
 
 for m in range(nGridX):
@@ -155,7 +158,7 @@ for m in range(nGridX):
         XP, YP = XX[m, n], YY[m, n]
         u, v = CLOVER_STREAMLINE(XP, YP, xa, ya, phi, g, Sj, U_inf, V_inf, xs, ys, xsi, ysi, g_source, g_sink)
 
-        if afPath.contains_points([XP,YP]):
+        if afPath.contains_points([[XP,YP]]):
             Vxe[m, n] = 0
             Vye[m, n] = 0
         else:
@@ -165,17 +168,14 @@ for m in range(nGridX):
 Vxy = np.sqrt(Vxe**2 + Vye**2)
 CpXY = 1 - Vxy**2
 
-plt.figure()
-plt.clf()
+fig = plt.figure(5)
+plt.cla()
+np.seterr(under="ignore")
+plt.streamplot(XX,YY,Vxe,Vye,linewidth=0.5,density=40,color='r',arrowstyle='-',start_points=XYsl)
 plt.grid(True)
 plt.axis('equal')
 plt.xlim(xVals)
 plt.ylim(yVals)
-
-for i in range(len(Ysl)):
-    sl = plt.streamplot(XX, YY, Vxe, Vye, start_points=[Xsl[i], Ysl[i]], integration_direction='forward', color='black')
-    plt.setp(sl.lines, linewidth=2)
-
 plt.fill(xa, ya, 'k')
 plt.xlabel('X Units')
 plt.ylabel('Y Units')
@@ -187,7 +187,6 @@ plt.grid(True)
 plt.axis('equal')
 plt.xlim(xVals)
 plt.ylim(yVals)
-
 plt.contourf(XX, YY, CpXY, 100, edgecolors='none')
 plt.fill(xa, ya, 'k')
 plt.xlabel('X Units')
