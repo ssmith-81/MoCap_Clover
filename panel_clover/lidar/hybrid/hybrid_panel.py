@@ -69,6 +69,10 @@ YawC = []
 xa = []
 ya = []
 
+# updated velocity field plot
+u_field = []
+v_field = []
+
 # Analyze control input (see if error is being minimized )
 velfx=[]
 velfy=[]
@@ -190,7 +194,7 @@ class clover:
 		self.pose_call = rospy.Subscriber('/mavros/local_position/pose',PoseStamped, self.controller)
 		
 		# Generate the array of lidar angles
-		self.lidar_angles = np.linspace(-45*(math.pi/180), 45*(math.pi/180), 32) 
+		self.lidar_angles = np.linspace(-45*(math.pi/180), 45*(math.pi/180), 32) # Adjust this number based on number defined in XACRO!!!!!
 
 		# Initialize the ranges array for the controller as no object detected (i.e. an array of inf)
 		self.obs_detect = np.full_like(self.lidar_angles, np.inf)
@@ -278,8 +282,9 @@ class clover:
 
 		# Get current state of this follower 
 		telem = get_telemetry(frame_id='map')
-		# Need to add a lidar detection threshold for this case, so if we have like 1-2 or low detection we cot get singular matrix
-		if any(not np.isinf(range_val) for range_val in self.obs_detect) and telem.z >=0.8: # Dont want to use this during takeoff as the lidar will pick up the ground when the Clover slants
+		# Need to add a lidar detection threshold for this case (4), so if we have like 1-2 or low detection we could get singular matrix
+		if sum(not np.isinf(range_val) for range_val in self.obs_detect) >= 4 and telem.z >= 0.8:
+		#if any(not np.isinf(range_val) for range_val in self.obs_detect) and telem.z >=0.8: # Dont want to use this during takeoff as the lidar will pick up the ground when the Clover slants
 			print('tic')
 			# Update the obstacle detection flag
 			self.flag = True
@@ -290,8 +295,12 @@ class clover:
 			# Filter out the inf values in the data point arrays
 			self.xa = self.xa[np.isfinite(self.xa)]
 			self.ya = self.ya[np.isfinite(self.ya)]
-			xa.extend(self.xa)
-			ya.extend(self.ya)
+			# Keep adding the points into one linear array
+			# xa.extend(self.xa)
+			# ya.extend(self.ya)
+			# Append row after row of data
+			xa.append(self.xa.tolist())
+			ya.append(self.ya.tolist())
 
 				# Upate the number of panels
 			self.n = len(self.xa)-1
@@ -381,8 +390,8 @@ class clover:
 				
 
 			# Complete contributions from pre-computed grid distribution
-			u = griddata((self.XX_f, self.YY_f),self.Vxe_f,(telem.x,telem.y),method='cubic') #+ self.u_inf #+ u_source #+ u_inf
-			v = griddata((self.XX_f, self.YY_f),self.Vye_f,(telem.x,telem.y),method='cubic') #+self.v_inf#+ v_source #+self.v_inf #+ v_source #+ v_inf
+			u = griddata((self.XX_f, self.YY_f),self.Vxe_f,(telem.x,telem.y),method='linear') #+ self.u_inf #+ u_source #+ u_inf
+			v = griddata((self.XX_f, self.YY_f),self.Vye_f,(telem.x,telem.y),method='linear') #+self.v_inf#+ v_source #+self.v_inf #+ v_source #+ v_inf
 
 				
 
@@ -519,7 +528,7 @@ if __name__ == '__main__':
 		plt.subplot(211)
 		plt.plot(xf,yf,'r',label='x-fol')
 		#plt.plot(xa,'b--',label='x-obs')
-		plt.fill(xa,ya,'k')
+		plt.fill(xa[0],ya[0],'k') # plot first reading
 		plt.legend()
 		plt.grid(True)
 		#plt.subplot(312)
@@ -561,8 +570,11 @@ if __name__ == '__main__':
 		plt.grid(True)
 
 		plt.figure(3)
-		plt.fill(xa,ya,'k')
+		for x_row, y_row in zip(xa, ya):
+			plt.plot(x_row,y_row, '-o',label=f'Reading {len(plt.gca().lines)}')
+			#plt.fill(xa,ya,'k')
 		plt.grid(True)
+		plt.legend()
 		
 		# plt.figure(3)
 		# plt.plot(U_infx,'r',label='x_inf')
