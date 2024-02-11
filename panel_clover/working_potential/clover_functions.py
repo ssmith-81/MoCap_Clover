@@ -3,7 +3,7 @@
 import numpy as np
 
 # Find geometric quantities of the obstacle
-def CLOVER_COMPONENTS(xa, ya, U_inf, V_inf, g_source, g_sink, xs, ys, xsi, ysi, n):
+def CLOVER_COMPONENTS(xa, ya, U_inf, V_inf, g_source, g_sink, xs, ys, xsi, ysi, n, g_clover, x_cl, y_cl):
     xmid = np.zeros(n)
     ymid = np.zeros(n)
     dx = np.zeros(n)
@@ -26,7 +26,7 @@ def CLOVER_COMPONENTS(xa, ya, U_inf, V_inf, g_source, g_sink, xs, ys, xsi, ysi, 
 
         rhs[i] = U_inf * ymid[i] - V_inf * xmid[i] \
                  + (g_source / (2 * np.pi)) * np.arctan2(ymid[i] - ys, xmid[i] - xs) \
-                 - (g_sink / (2 * np.pi)) * np.arctan2(ymid[i] - ysi, xmid[i] - xsi) + (0.05 / (2*np.pi))*np.arctan2(ymid[i] - 2.5, xmid[i] - 5) # add an arbitrary source here to see what happens
+                 - (g_sink / (2 * np.pi)) * np.arctan2(ymid[i] - ysi, xmid[i] - xsi) + (g_clover / (2*np.pi))*np.arctan2(ymid[i] - y_cl, xmid[i] - x_cl) # add an arbitrary source here to see what happens
 
     return xmid, ymid, dx, dy, Sj, phiD, rhs
 
@@ -64,9 +64,9 @@ def CLOVER_STREAM_GEOMETRIC_INTEGRAL(xmid, ymid, xa, ya, phi, Sj, n):
 
     return I
 
-def CLOVER_KUTTA(I, trail_point, xa, ya, phi, Sj, n, flagKutta, rhs, U_inf, V_inf, xs, ys, xsi, ysi, g_source, g_sink):
+def CLOVER_KUTTA(I, trail_point, xa, ya, phi, Sj, n, flagKutta, rhs, U_inf, V_inf, xs, ys, xsi, ysi, g_source, g_sink, g_clover, x_cl, y_cl):
     # Form the last line of equation with the Kutta condition
-    if flagKutta[0] == 1:
+    if flagKutta[0] == 1: # gamme_1 + gamma_N = 0, --> only value for closed object
         I[n, 0] = 1
         I[n, n-1] = 1
         I[n, n] = 0
@@ -77,7 +77,7 @@ def CLOVER_KUTTA(I, trail_point, xa, ya, phi, Sj, n, flagKutta, rhs, U_inf, V_in
     if flagKutta[1] == 1:
         rhs[n] = trail_point[1] * U_inf - trail_point[0] * V_inf + (g_source / (2 * np.pi)) * np.arctan2(
             trail_point[1] - ys, trail_point[0] - xs) - (g_sink / (2 * np.pi)) * np.arctan2(
-            trail_point[1] - ysi, trail_point[0] - xsi) + (0.05 / (2*np.pi))*np.arctan2(trail_point[1] - 2.5, trail_point[0] - 5) # add random source here to see what happens
+            trail_point[1] - ysi, trail_point[0] - xsi) + (g_clover / (2*np.pi))*np.arctan2(trail_point[1] - y_cl, trail_point[0] - x_cl) # add random source here to see what happens
 
         for j in range(n+1):
             if j == n:
@@ -102,9 +102,18 @@ def CLOVER_KUTTA(I, trail_point, xa, ya, phi, Sj, n, flagKutta, rhs, U_inf, V_in
                 # Compute I_(i,j) geometric values for each panel j on control point i
                 I[n, j] = -(1 / (2 * np.pi)) * (xbar * np.log(r2 / r1) - Sj[j] * np.log(r2) + ybar * (omega1 - omega2))
 
+    # This is for a sail like object i.e. lidar detection (non closed object)
+    if flagKutta[2] == 1: # gamma_N = 0 -> slow smoothly off end of sail (panel at the end point)
+        I[n, 0] = 0
+        I[n, n-1] = 1  # gamma_N = rhs[n] = 0 
+        I[n, n] = 0  # stream_function/psi position
+        rhs[n] = 0
+        for j in range(1, n-1):
+            I[n, j] = 0
+
     return I, rhs
 
-def CLOVER_STREAMLINE(xmid, ymid, xa, ya, phi, g, Sj, U_inf, V_inf, xs, ys, xsi, ysi, g_source, g_sink):
+def CLOVER_STREAMLINE(xmid, ymid, xa, ya, phi, g, Sj, U_inf, V_inf, xs, ys, xsi, ysi, g_source, g_sink, g_clover, x_cl, y_cl):
     # Number of panels
     n = len(xa) - 1
 
@@ -144,10 +153,10 @@ def CLOVER_STREAMLINE(xmid, ymid, xa, ya, phi, g, Sj, U_inf, V_inf, xs, ys, xsi,
     v_source = (g_source / (2 * np.pi)) * ((ymid - ys) / ((xmid - xs)**2 + (ymid - ys)**2))
     v_sink = -(g_sink / (2 * np.pi)) * ((ymid - ysi) / ((xmid - xsi)**2 + (ymid - ysi)**2))
 
-    # introduce random source
+    # introduce random source on clover
     
-    u_source_rand = (0.05 / (2 * np.pi)) * ((xmid - 5) / ((xmid - 5)**2 + (ymid - 2.5)**2))
-    v_source_rand = (0.05 / (2 * np.pi)) * ((ymid - 8) / ((xmid - 5)**2 + (ymid - 2.5)**2))
+    u_source_rand = (g_clover / (2 * np.pi)) * ((xmid - x_cl) / ((xmid - x_cl)**2 + (ymid - y_cl)**2))
+    v_source_rand = (g_clover / (2 * np.pi)) * ((ymid - y_cl) / ((xmid - x_cl)**2 + (ymid - y_cl)**2))
 
     # Include the uniform flow contributions to the velocity calculations:
     u += U_inf + u_source + u_sink + u_source_rand

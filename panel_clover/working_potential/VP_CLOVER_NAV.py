@@ -13,7 +13,10 @@ from clover_functions import CLOVER_COMPONENTS, CLOVER_STREAM_GEOMETRIC_INTEGRAL
 np.seterr(divide='ignore', invalid='ignore')  # Ignore division by zero and invalid value warnings
 
 # Kutta condition flag (decide which one to use)
-flagKutta = np.array([0, 1])
+flagKutta = np.array([0, 0, 1])
+		# position 0 is for smooth flow off edge for closed object
+		# position 1 is for smooth flow off ege for closed object using point extended into space a small amount
+		# position 2 is for smooth flow off the edge of a non closed i.e. sail detection with lidar
 
 nacaseries = input('Enter the 4-digit naca series = ')
 c = float(input('Enter the chord length = '))
@@ -32,17 +35,23 @@ g_sink = 2.75
 xs, ys = 0, 0
 xsi, ysi = 20, 20
 
+# Source on the drone
+x_cl = 3
+y_cl = 2.5
+g_clover = 0.05
+
 # Circle instead of airfoil
 center1 = np.array([5, 5])
 radius1 = 2
 
-theta1 = np.linspace(0, -2 * np.pi, n + 1)
+# theta1 = np.linspace(0, -2 * np.pi, n + 1) 
+theta1 = np.linspace(225 * np.pi / 180, 405 * np.pi / 180, n + 1)
 xa = center1[0] + radius1 * np.cos(theta1)
 ya = center1[1] + radius1 * np.sin(theta1)
 
 alpha = np.radians(a)
 
-[xmid, ymid, dx, dy, Sj, phiD, rhs] = CLOVER_COMPONENTS(xa, ya, U_inf, V_inf, g_source, g_sink, xs, ys, xsi, ysi, n)
+[xmid, ymid, dx, dy, Sj, phiD, rhs] = CLOVER_COMPONENTS(xa, ya, U_inf, V_inf, g_source, g_sink, xs, ys, xsi, ysi, n, g_clover, x_cl, y_cl)
 
 deltaD = phiD + 90
 betaD = deltaD - a
@@ -61,7 +70,7 @@ trail_point = np.array([center1[0], center1[1]]) + np.array([xtrail, ytrail])
 I = CLOVER_STREAM_GEOMETRIC_INTEGRAL(xmid, ymid, xa, ya, phi, Sj, n)
 
 # Form the last line of the system of equations with the kutta condition
-[I, rhs] = CLOVER_KUTTA(I, trail_point, xa, ya, phi, Sj, n, flagKutta, rhs, U_inf, V_inf, xs, ys, xsi, ysi, g_source, g_sink)
+[I, rhs] = CLOVER_KUTTA(I, trail_point, xa, ya, phi, Sj, n, flagKutta, rhs, U_inf, V_inf, xs, ys, xsi, ysi, g_source, g_sink, g_clover, x_cl, y_cl)
 
 # calculating the vortex density (and stream function from kutta condition)
 # by solving linear equations given by
@@ -120,8 +129,8 @@ plt.show()
 # Too many gridpoints is not good, it will cause the control loop to run too slow
 # in the offline_panel script
  # Grid parameters
-nGridX = 30;                                                           # X-grid for streamlines and contours
-nGridY = 30;                                                           # Y-grid for streamlines and contours
+nGridX = 20;                                                           # X-grid for streamlines and contours
+nGridY = 20;                                                           # Y-grid for streamlines and contours
 xVals  = [-1, 21];  # -0.5; 1.5                                                  # X-grid extents [min, max]
 yVals  = [-1, 21];  #-0.3;0.3                                                 # Y-grid extents [min, max]
     
@@ -158,7 +167,7 @@ afPath = path.Path(AF)
 for m in range(nGridX):
     for n in range(nGridY):
         XP, YP = XX[m, n], YY[m, n]
-        u, v = CLOVER_STREAMLINE(XP, YP, xa, ya, phi, g, Sj, U_inf, V_inf, xs, ys, xsi, ysi, g_source, g_sink)
+        u, v = CLOVER_STREAMLINE(XP, YP, xa, ya, phi, g, Sj, U_inf, V_inf, xs, ys, xsi, ysi, g_source, g_sink, g_clover, x_cl, y_cl)
 
         if afPath.contains_points([[XP,YP]]):
             Vxe[m, n] = 0
