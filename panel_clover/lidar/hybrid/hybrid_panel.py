@@ -14,6 +14,8 @@ from clover import srv
 from std_srvs.srv import Trigger
 import math
 from geometry_msgs.msg import Point, PoseStamped, TwistStamped
+from gazebo_msgs.msg import ModelState 
+from gazebo_msgs.srv import SetModelState
 import tf
 from std_msgs.msg import String
 from sensor_msgs.msg import Imu, LaserScan
@@ -93,14 +95,14 @@ class clover:
 	
 		
 		# Define the sink location and strength
-		self.g_sink = 2.5
-		self.xsi = 10
-		self.ysi = 10
+		self.g_sink = 3.5
+		self.xsi = 20
+		self.ysi = 20
 		
 		# Define the source strength and location
 		self.g_source = 0.5
-		self.xs = 0
-		self.ys = 0
+		self.xs = -0.1
+		self.ys = -0.1
 		
  		
  		# Free flow constant
@@ -123,6 +125,9 @@ class clover:
 		# iNITIALIZE INPUT VELOCITY VALUES
 		self.u = 0
 		self.v = 0
+		
+		# Define the max velocity allowed for the Clover
+		self.vel_max = 0.8 # [m/s]
 
 		# #-------------------- Offline Panel Calculations---------------------------------------------------
 			
@@ -131,10 +136,10 @@ class clover:
 				## Compute Streamlines with stream function velocity equation
 		# Too many gridpoints is not good, it will cause the control loop to run too slow
 		# Grid parameters
-		self.nGridX = 15;                                                           # X-grid for streamlines and contours
-		self.nGridY = 15;                                                           # Y-grid for streamlines and contours
-		xVals  = [-1, 11];  # ensured it is extended past the domain incase the clover leaves domain             # X-grid extents [min, max]
-		yVals  = [-1, 11];  #-0.3;0.3                                                 # Y-grid extents [min, max]
+		self.nGridX = 18;                                                           # X-grid for streamlines and contours
+		self.nGridY = 18;                                                           # Y-grid for streamlines and contours
+		xVals  = [-1, 21];  # ensured it is extended past the domain incase the clover leaves domain             # X-grid extents [min, max]
+		yVals  = [-1, 21];  #-0.3;0.3                                                 # Y-grid extents [min, max]
 			
 		# Streamline parameters
 		stepsize = 0.1;   #0.01                                                     # Step size for streamline propagation
@@ -194,7 +199,7 @@ class clover:
 		self.pose_call = rospy.Subscriber('/mavros/local_position/pose',PoseStamped, self.controller)
 		
 		# Generate the array of lidar angles
-		self.lidar_angles = np.linspace(-45*(math.pi/180), 45*(math.pi/180), 32) # Adjust this number based on number defined in XACRO!!!!!
+		self.lidar_angles = np.linspace(-45*(math.pi/180), 45*(math.pi/180), 360) # Adjust this number based on number defined in XACRO!!!!!
 
 		# Initialize the ranges array for the controller as no object detected (i.e. an array of inf)
 		self.obs_detect = np.full_like(self.lidar_angles, np.inf)
@@ -205,7 +210,7 @@ class clover:
 		# Set a timer for the velocity field update function (runs periodically)
 		# updates every 8 seconds (0.125 Hz)
 
-		rospy.Timer(rospy.Duration(5), self.velocity_field_update)
+		rospy.Timer(rospy.Duration(1.5), self.velocity_field_update)
 
 		# Set a flag, that will track if a change in envirnment occurred i.e. an object was detected
 		# therefore if an object was not detected previously then there is no reason in re calculating
@@ -242,7 +247,7 @@ class clover:
 		# nothing is detected:
 		if any(not np.isinf(range_val) for range_val in self.obs_detect):
 	
-			# The angles and ranges start at -45 degrees i.e. at the right side, then go counter clockwise up to the top i.e. 45 degrees
+			# The angles and ranges start at -180 degrees i.e. at the right side, then go counter clockwise up to the top i.e. 180 degrees
 			ranges = data.ranges
 		
 			angles = self.lidar_angles
@@ -254,7 +259,7 @@ class clover:
 			yaw = telem.yaw
 			
 			
-			# Polar to Cartesion transformation for all readings (assuming angles are in standard polar coordinates).
+			# Polar to Cartesion transformation for all readings (assuming angles are in standard polar coordinates) y-axis is left and x-axis is directly forward.
 			x_local = ranges*np.cos(angles)
 			y_local = ranges*np.sin(angles)
 			
@@ -404,7 +409,7 @@ class clover:
 			magnitude = math.sqrt(self.u**2 + self.v**2)
 				
 			if magnitude > 0:
-				norm_vel = (vec/magnitude)*0.25
+				norm_vel = (vec/magnitude)*self.vel_max
 			else:
 				norm_vel = np.zeros_like(vec)
 					
@@ -423,7 +428,7 @@ class clover:
 		# Wait for 5 seconds
 		rospy.sleep(3)
 		# Takeoff to a desired altitude # x=0.2, y=2
-		navigate(x=1,y=1,z = 1, frame_id='map',auto_arm=True) # drone seems to be unstable when I set frame to map... I think there is something wrong with lidar physical values
+		navigate(x=0.5,y=0.5,z = 1, frame_id='map',auto_arm=True) # drone seems to be unstable when I set frame to map... I think there is something wrong with lidar physical values
 		
 		# Give the Clover time to reach the takeoff altitude
 		rospy.sleep(15)
