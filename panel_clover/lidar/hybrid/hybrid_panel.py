@@ -72,8 +72,14 @@ xa = []
 ya = []
 
 # updated velocity field plot
-u_field = []
-v_field = []
+nGridX = 20                                                           # X-grid for streamlines and contours
+nGridY = 20                                                           # Y-grid for streamlines and contours
+x_field = np.zeros((nGridX, nGridY))
+y_field = np.zeros((nGridX, nGridY))
+u_field = np.zeros((nGridX, nGridY))
+v_field = np.zeros((nGridX, nGridY))
+lidar_x = []
+lidar_y = []
 
 # Analyze control input (see if error is being minimized )
 velfx=[]
@@ -95,14 +101,22 @@ class clover:
 	
 		
 		# Define the sink location and strength
-		self.g_sink = 3.5
+		self.g_sink = 2.00
 		self.xsi = 20
 		self.ysi = 20
 		
 		# Define the source strength and location
-		self.g_source = 0.5
+		self.g_source = 0.75
 		self.xs = -0.1
 		self.ys = -0.1
+		# self.xs = 5
+		# self.ys = 2.5
+
+
+		# Define the source strength placed on the actual drone
+		self.g_clover = 0.0
+
+		# Could possible just put a source on the drone and not bother with the two different sources
 		
  		
  		# Free flow constant
@@ -136,8 +150,8 @@ class clover:
 				## Compute Streamlines with stream function velocity equation
 		# Too many gridpoints is not good, it will cause the control loop to run too slow
 		# Grid parameters
-		self.nGridX = 18;                                                           # X-grid for streamlines and contours
-		self.nGridY = 18;                                                           # Y-grid for streamlines and contours
+		self.nGridX = 20;                                                           # X-grid for streamlines and contours
+		self.nGridY = 20;                                                           # Y-grid for streamlines and contours
 		xVals  = [-1, 21];  # ensured it is extended past the domain incase the clover leaves domain             # X-grid extents [min, max]
 		yVals  = [-1, 21];  #-0.3;0.3                                                 # Y-grid extents [min, max]
 			
@@ -165,11 +179,14 @@ class clover:
 		self.Vxe = np.zeros((self.nGridX, self.nGridY))
 		self.Vye = np.zeros((self.nGridX, self.nGridY))
 
+		# Get the current state/position of th clover for its source
+		telem = get_telemetry(frame_id='map')
+
 
 		for m in range(self.nGridX):
 			for n in range(self.nGridY):
 				XP, YP = self.XX[m, n], self.YY[m, n]
-				u, v = CLOVER_noOBSTACLE(XP, YP, self.U_inf, self.V_inf, self.xs, self.ys, self.xsi, self.ysi, self.g_source, self.g_sink)
+				u, v = CLOVER_noOBSTACLE(XP, YP, self.U_inf, self.V_inf, self.xs, self.ys, self.xsi, self.ysi, self.g_source, self.g_sink, self.g_clover, telem.x, telem.y)
 				
 				self.Vxe[m, n] = u
 				self.Vye[m, n] = v
@@ -210,12 +227,19 @@ class clover:
 		# Set a timer for the velocity field update function (runs periodically)
 		# updates every 8 seconds (0.125 Hz)
 
-		rospy.Timer(rospy.Duration(1.5), self.velocity_field_update)
+		rospy.Timer(rospy.Duration(2.0), self.velocity_field_update)
 
 		# Set a flag, that will track if a change in envirnment occurred i.e. an object was detected
 		# therefore if an object was not detected previously then there is no reason in re calculating
 		# the velocity field based on source/sink strengths
 		self.flag = False
+
+		#-----Define velocity field plot logging variables--------------
+		self.count = True
+
+
+
+		#--------------------------------------------------------------
 
 		
 		
@@ -257,6 +281,18 @@ class clover:
 			x_clover = telem.x
 			y_clover = telem.y
 			yaw = telem.yaw
+
+			# Put a safety factor on the detected obstacle 
+			# Reduce the range by a constant beta for each real range (set as diameter of the clover)
+			beta = 0.5
+
+			# Convert ranges to a NumPy array if it's not already
+			ranges = np.array(ranges)
+			# Subtract beta only from non-infinite values
+			# Create a mask for non-infinite values
+			non_inf_mask = np.isfinite(ranges)
+			# Subtract beta only from non-infinite values
+			ranges = np.where(non_inf_mask, ranges - beta, ranges)
 			
 			
 			# Polar to Cartesion transformation for all readings (assuming angles are in standard polar coordinates) y-axis is left and x-axis is directly forward.
@@ -297,13 +333,19 @@ class clover:
 			# Update the lidar detection readings
 			self.xa = self.readings_global[:,0].T
 			self.ya = self.readings_global[:,1].T
+
+			# Filter every second reading i.e. take every second reading. We want to reduce the computational load on the panel method
+			# So take 180 readings over 360degree span instead of 360 readings
+			# self.xa = self.xa[::2]
+			# self.ya = self.ya[::2]
+
 			# Filter out the inf values in the data point arrays
 			self.xa = self.xa[np.isfinite(self.xa)]
 			self.ya = self.ya[np.isfinite(self.ya)]
 			# Keep adding the points into one linear array
 			# xa.extend(self.xa)
 			# ya.extend(self.ya)
-			# Append row after row of data
+			# Append row after row of data (to log readings)
 			xa.append(self.xa.tolist())
 			ya.append(self.ya.tolist())
 
@@ -320,7 +362,7 @@ class clover:
 				#This function calculates the location of the control points as well as the
 						#right hand side of the stream function equation:
 
-			[xmid, ymid, dx, dy, Sj, phiD, rhs] = CLOVER_COMPONENTS(self.xa, self.ya, self.U_inf, self.V_inf, self.g_source, self.g_sink, self.xs, self.ys, self.xsi, self.ysi, self.n)
+			[xmid, ymid, dx, dy, Sj, phiD, rhs] = CLOVER_COMPONENTS(self.xa, self.ya, self.U_inf, self.V_inf, self.g_source, self.g_sink, self.xs, self.ys, self.xsi, self.ysi, self.n, self.g_clover, telem.x, telem.y)
 
 
 
@@ -349,11 +391,23 @@ class clover:
 			for m in range(self.nGridX):
 				for n in range(self.nGridY):
 					XP, YP = self.XX[m, n], self.YY[m, n]
-					u, v = CLOVER_STREAMLINE(XP, YP, self.xa, self.ya, phi, g, Sj, self.U_inf, self.V_inf, self.xs, self.ys, self.xsi, self.ysi, self.g_source, self.g_sink)
+					u, v = CLOVER_STREAMLINE(XP, YP, self.xa, self.ya, phi, g, Sj, self.U_inf, self.V_inf, self.xs, self.ys, self.xsi, self.ysi, self.g_source, self.g_sink, self.g_clover, telem.x, telem.y)
 					# print(u)
 					self.Vxe[m, n] = u
 					
 					self.Vye[m, n] = v
+
+			# Log the fist velocity field update reading
+			if self.count:
+				x_field[:,:] = self.XX # Assign XX to x_field, assuming XX and x_field have the same shape
+				y_field[:,:] = self.YY
+				u_field[:,:] = self.Vxe
+				v_field[:,:] = self.Vye
+				lidar_x.append(self.xa)
+				lidar_y.append(self.ya)
+				
+				# update the flag variable (turn off so we only log the first update/obstacle reading)
+				self.count = False
 
 		else:
 			# only run if the flag is true, i.e. an object was previously detected
@@ -362,7 +416,7 @@ class clover:
 				for m in range(self.nGridX):
 					for n in range(self.nGridY):
 						XP, YP = self.XX[m, n], self.YY[m, n]
-						u, v = CLOVER_noOBSTACLE(XP, YP, self.U_inf, self.V_inf, self.xs, self.ys, self.xsi, self.ysi, self.g_source, self.g_sink)
+						u, v = CLOVER_noOBSTACLE(XP, YP, self.U_inf, self.V_inf, self.xs, self.ys, self.xsi, self.ysi, self.g_source, self.g_sink, self.g_clover, telem.x, telem.y)
 						
 						self.Vxe[m, n] = u
 						self.Vye[m, n] = v
@@ -384,6 +438,7 @@ class clover:
 		current_timestamp = data.header.stamp.to_sec()
 		
 		if self.last_timestamp is not None:
+			
 
 			# Get current state of this follower 
 			telem = get_telemetry(frame_id='map')
@@ -418,7 +473,7 @@ class clover:
 					#print(self.u)
 					# determine the yaw
 			self.omega = math.atan2(self.v,self.u)
-		
+			
 		# Update last_timestamp for the next callback
 		self.last_timestamp = current_timestamp
 
@@ -503,7 +558,7 @@ class clover:
 			# V_infy.append(self.V_inf)
 			
 			if math.sqrt((telem.x-self.xsi) ** 2 + (telem.y-self.ysi) ** 2) < 0.6: # 0.4
-				navigate(x=0,y=0,z=self.FLIGHT_ALTITUDE, yaw=float('nan'), speed=0.5, frame_id = self.FRAME)
+				navigate(x=0,y=0,z=self.FLIGHT_ALTITUDE, yaw=float('nan'), speed=0.01, frame_id = self.FRAME)
 				break
 			rr.sleep()
 			#rospy.spin()
@@ -514,7 +569,7 @@ class clover:
 	
 
 		# Wait for 3 seconds
-		rospy.sleep(3)
+		rospy.sleep(6)
 		# Perform landing
 		
 		land()
@@ -527,6 +582,30 @@ if __name__ == '__main__':
 		q.main()
 		#print(xa)
 		#print(xf)
+
+		# Define some preliminary plot limits for streamplot
+		xVals  = [-1, 21];  # -0.5; 1.5                                                  # X-grid extents [min, max]
+		yVals  = [-1, 21];  #-0.3;0.3                                                 # Y-grid extents [min, max]
+		# Create an array of starting points for the streamlines
+		# x_range = np.linspace(0, 20, int((20-0)/0.75) + 1)
+		# y_range = np.linspace(0, 20, int((20-0)/0.75) + 1)
+		# x_1 = np.zeros(len(y_range))
+		# y_1 = np.zeros(len(x_range))
+
+		x_range = np.linspace(2, 8, int((8-2)/0.5) + 1)
+		y_range = np.linspace(2, 8, int((8-2)/0.5) + 1)
+		x_1 = np.ones(len(y_range))*2
+		y_1 = np.ones(len(x_range))*2
+		# Convert list fields to arrays
+		# x_field = np.array(x_field).reshape(2,2)
+		# y_field = np.array(y_field).reshape(2,2)
+		# u_field = np.array(u_field).reshape(2,2)
+		# v_field = np.array(v_field).reshape(2,2)
+
+		
+		Xsl = np.concatenate((x_1, x_range))
+		Ysl = np.concatenate((np.flip(y_range), y_1))
+		XYsl = np.vstack((Xsl,Ysl)).T
 		
 		# Plot logged data for analyses and debugging
 		plt.figure(1)
@@ -580,6 +659,31 @@ if __name__ == '__main__':
 			#plt.fill(xa,ya,'k')
 		plt.grid(True)
 		plt.legend()
+		
+
+		fig = plt.figure(4)
+		plt.cla()
+		np.seterr(under="ignore")
+		plt.streamplot(x_field,y_field,u_field,v_field,linewidth=1.0,density=40,color='r',arrowstyle='-',start_points=XYsl) # density = 40
+		plt.grid(True)
+		#plt.plot(XX,YY,marker='o',color='blue')
+		plt.axis('equal')
+		plt.xlim(xVals)
+		plt.ylim(yVals)
+		plt.plot(lidar_x, lidar_y,'-o' ,color = 'k',linewidth = 0.25)
+		plt.plot(xf,yf,'b',label='x-fol') # path taken by clover
+		plt.xlabel('X Units')
+		plt.ylabel('Y Units')
+		plt.title('Streamlines with Stream Function Velocity Equations')
+
+		plt.figure(5)
+		plt.scatter(x_field,y_field,color = 'blue', label='data-points')
+		plt.xlabel('x-data')
+		plt.ylabel('y-data')
+		plt.grid(True)
+		plt.legend()
+
+
 		
 		# plt.figure(3)
 		# plt.plot(U_infx,'r',label='x_inf')

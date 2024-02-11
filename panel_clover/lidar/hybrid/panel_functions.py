@@ -3,7 +3,7 @@
 import numpy as np
 
 # Find geometric quantities of the obstacle
-def CLOVER_COMPONENTS(xa, ya, U_inf, V_inf, g_source, g_sink, xs, ys, xsi, ysi, n):
+def CLOVER_COMPONENTS(xa, ya, U_inf, V_inf, g_source, g_sink, xs, ys, xsi, ysi, n, g_clover, x_cl, y_cl):
     xmid = np.zeros(n)
     ymid = np.zeros(n)
     dx = np.zeros(n)
@@ -26,7 +26,7 @@ def CLOVER_COMPONENTS(xa, ya, U_inf, V_inf, g_source, g_sink, xs, ys, xsi, ysi, 
 
         rhs[i] = U_inf * ymid[i] - V_inf * xmid[i] \
                  + (g_source / (2 * np.pi)) * np.arctan2(ymid[i] - ys, xmid[i] - xs) \
-                 - (g_sink / (2 * np.pi)) * np.arctan2(ymid[i] - ysi, xmid[i] - xsi)
+                 - (g_sink / (2 * np.pi)) * np.arctan2(ymid[i] - ysi, xmid[i] - xsi) + (g_clover / (2*np.pi))*np.arctan2(ymid[i] - y_cl, xmid[i] - x_cl)
 
     return xmid, ymid, dx, dy, Sj, phiD, rhs
 
@@ -68,24 +68,25 @@ def CLOVER_KUTTA(I, n, flagKutta, rhs):
     # Form the last line of equation with the Kutta condition
     if flagKutta[0] == 1:
         I[n, 0] = 1
-        I[n, n-1] = 1
-        I[n, n] = 0
+        I[n, n-1] = 1 
+        I[n, n] = 0 
         rhs[n] = 0
         for j in range(1, n-1):
             I[n, j] = 0
 
     # This is for a sail like object i.e. lidar detection (non closed object)
-    if flagKutta[2] == 1:
-        I[n, 0] = 0
-        I[n, n-1] = 1
-        I[n, n] = 0
+    # Maybe have a condition that alters between gamme_1 = 0 and gamme_N = 0 depending on whether the obstacle is left or right of center relative to the Clover.
+    if flagKutta[2] == 1: # gamma_N = 0 -> slow smoothly off end of sail
+        I[n, 0] = 1
+        I[n, n-1] = 0  # gamma_N = rhs[n] = 0 
+        I[n, n] = 0  # stream_function/psi position
         rhs[n] = 0
         for j in range(1, n-1):
             I[n, j] = 0
 
     return I, rhs
 
-def CLOVER_STREAMLINE(xmid, ymid, xa, ya, phi, g, Sj, U_inf, V_inf, xs, ys, xsi, ysi, g_source, g_sink):
+def CLOVER_STREAMLINE(xmid, ymid, xa, ya, phi, g, Sj, U_inf, V_inf, xs, ys, xsi, ysi, g_source, g_sink, g_clover, x_cl, y_cl):
     # Number of panels
     n = len(xa) - 1
 
@@ -125,13 +126,18 @@ def CLOVER_STREAMLINE(xmid, ymid, xa, ya, phi, g, Sj, U_inf, V_inf, xs, ys, xsi,
     v_source = (g_source / (2 * np.pi)) * ((ymid - ys) / ((xmid - xs)**2 + (ymid - ys)**2))
     v_sink = -(g_sink / (2 * np.pi)) * ((ymid - ysi) / ((xmid - xsi)**2 + (ymid - ysi)**2))
 
+     # introduce source on clover drone
+    
+    u_clover = (g_clover / (2 * np.pi)) * ((xmid - x_cl) / ((xmid - x_cl)**2 + (ymid - y_cl)**2))
+    v_clover = (g_clover / (2 * np.pi)) * ((ymid - y_cl) / ((xmid - x_cl)**2 + (ymid - y_cl)**2))
+
     # Include the uniform flow contributions to the velocity calculations:
-    u += U_inf + u_source + u_sink
-    v += V_inf + v_source + v_sink
+    u += U_inf + u_source + u_sink + u_clover
+    v += V_inf + v_source + v_sink + v_clover
 
     return u, v
 
-def CLOVER_noOBSTACLE(xmid, ymid, U_inf, V_inf, xs, ys, xsi, ysi, g_source, g_sink):
+def CLOVER_noOBSTACLE(xmid, ymid, U_inf, V_inf, xs, ys, xsi, ysi, g_source, g_sink, g_clover, x_cl, y_cl):
    
 
     u = 0
@@ -145,9 +151,14 @@ def CLOVER_noOBSTACLE(xmid, ymid, U_inf, V_inf, xs, ys, xsi, ysi, g_source, g_si
     v_source = (g_source / (2 * np.pi)) * ((ymid - ys) / ((xmid - xs)**2 + (ymid - ys)**2))
     v_sink = -(g_sink / (2 * np.pi)) * ((ymid - ysi) / ((xmid - xsi)**2 + (ymid - ysi)**2))
 
+     # introduce source on clover drone
+    
+    u_clover = (g_clover / (2 * np.pi)) * ((xmid - x_cl) / ((xmid - x_cl)**2 + (ymid - y_cl)**2))
+    v_clover = (g_clover / (2 * np.pi)) * ((ymid - y_cl) / ((xmid - x_cl)**2 + (ymid - y_cl)**2))
+
     # Include the uniform flow contributions to the velocity calculations:
-    u += U_inf + u_source + u_sink
-    v += V_inf + v_source + v_sink
+    u += U_inf + u_source + u_sink + u_clover
+    v += V_inf + v_source + v_sink + v_clover
 
     return u, v
 

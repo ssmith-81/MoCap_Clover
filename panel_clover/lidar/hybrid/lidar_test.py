@@ -84,8 +84,8 @@ eyaw=[]
 			
 
 		
-lidar_angles = np.linspace(-45*(math.pi/180), 45*(math.pi/180), 16) # generate the array of lidar angles
-	
+lidar_angles = np.linspace(-180*(math.pi/180), 180*(math.pi/180), 360) # generate the array of lidar angles
+
 		
 		
 def lidar_read(data):
@@ -101,7 +101,20 @@ def lidar_read(data):
 	x_clover = telem.x
 	y_clover = telem.y
 	yaw = telem.yaw
-		
+
+	# put a safety factor on the detected obstacle
+			# Reduce the range by a constant beta for each real range (set as diameter of the clover)
+	beta = 0.1
+	# Convert ranges to a NumPy array if it's not already
+	ranges = np.array(ranges)
+	# Subtract beta only from non-infinite values
+	# Create a mask for non-infinite values
+	non_inf_mask = np.isfinite(ranges)
+
+	# Subtract beta only from non-infinite values
+	# print(ranges)
+	ranges = np.where(non_inf_mask, ranges - beta, ranges)
+	# print(ranges)
 		
 		# Polar to Cartesion transformation for all readings (assuming angles are in standard polar coordinates).
 	x_local = ranges*np.cos(angles)
@@ -123,12 +136,16 @@ def lidar_read(data):
 	#print(readings_global)
 	xa = readings_global[:,0]
 	ya = readings_global[:,1]
-	print(xa)
+	
+	# Append row after row of data (to log readings)
+	xf.append(xa.tolist())
+	yf.append(ya.tolist())
 
 def main():
 
-		# Subscribe to the Lidar readings
+	# Subscribe to the Lidar readings
 	lidar = rospy.Subscriber('/ray_scan',LaserScan,lidar_read)
+		
 
 	
 	
@@ -152,6 +169,14 @@ if __name__ == '__main__':
 		
 		
 		main()
+
+		plt.figure(1)
+		for x_row, y_row in zip(xf, yf):
+			plt.plot(x_row,y_row, '-o',label=f'Reading {len(plt.gca().lines)}')
+			#plt.fill(xa,ya,'k')
+		plt.grid(True)
+		plt.legend()
+		plt.show()
 		
 		
 	except rospy.ROSInterruptException:
