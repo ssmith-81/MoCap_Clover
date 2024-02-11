@@ -26,7 +26,7 @@ def CLOVER_COMPONENTS(xa, ya, U_inf, V_inf, g_source, g_sink, xs, ys, xsi, ysi, 
 
         rhs[i] = U_inf * ymid[i] - V_inf * xmid[i] \
                  + (g_source / (2 * np.pi)) * np.arctan2(ymid[i] - ys, xmid[i] - xs) \
-                 - (g_sink / (2 * np.pi)) * np.arctan2(ymid[i] - ysi, xmid[i] - xsi)
+                 - (g_sink / (2 * np.pi)) * np.arctan2(ymid[i] - ysi, xmid[i] - xsi) + (0.05 / (2*np.pi))*np.arctan2(ymid[i] - 2.5, xmid[i] - 5) # add an arbitrary source here to see what happens
 
     return xmid, ymid, dx, dy, Sj, phiD, rhs
 
@@ -77,7 +77,7 @@ def CLOVER_KUTTA(I, trail_point, xa, ya, phi, Sj, n, flagKutta, rhs, U_inf, V_in
     if flagKutta[1] == 1:
         rhs[n] = trail_point[1] * U_inf - trail_point[0] * V_inf + (g_source / (2 * np.pi)) * np.arctan2(
             trail_point[1] - ys, trail_point[0] - xs) - (g_sink / (2 * np.pi)) * np.arctan2(
-            trail_point[1] - ysi, trail_point[0] - xsi)
+            trail_point[1] - ysi, trail_point[0] - xsi) + (0.05 / (2*np.pi))*np.arctan2(trail_point[1] - 2.5, trail_point[0] - 5) # add random source here to see what happens
 
         for j in range(n+1):
             if j == n:
@@ -144,8 +144,13 @@ def CLOVER_STREAMLINE(xmid, ymid, xa, ya, phi, g, Sj, U_inf, V_inf, xs, ys, xsi,
     v_source = (g_source / (2 * np.pi)) * ((ymid - ys) / ((xmid - xs)**2 + (ymid - ys)**2))
     v_sink = -(g_sink / (2 * np.pi)) * ((ymid - ysi) / ((xmid - xsi)**2 + (ymid - ysi)**2))
 
+    # introduce random source
+    
+    u_source_rand = (0.05 / (2 * np.pi)) * ((xmid - 5) / ((xmid - 5)**2 + (ymid - 2.5)**2))
+    v_source_rand = (0.05 / (2 * np.pi)) * ((ymid - 8) / ((xmid - 5)**2 + (ymid - 2.5)**2))
+
     # Include the uniform flow contributions to the velocity calculations:
-    u += U_inf + u_source + u_sink
-    v += V_inf + v_source + v_sink
+    u += U_inf + u_source + u_sink + u_source_rand
+    v += V_inf + v_source + v_sink + v_source_rand
 
     return u, v

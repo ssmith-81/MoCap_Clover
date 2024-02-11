@@ -30,7 +30,7 @@ g_sink = 2.75
 
 # Source and Sink Locations
 xs, ys = 0, 0
-xsi, ysi = 10, 10
+xsi, ysi = 20, 20
 
 # Circle instead of airfoil
 center1 = np.array([5, 5])
@@ -120,10 +120,10 @@ plt.show()
 # Too many gridpoints is not good, it will cause the control loop to run too slow
 # in the offline_panel script
  # Grid parameters
-nGridX = 20;                                                           # X-grid for streamlines and contours
-nGridY = 20;                                                           # Y-grid for streamlines and contours
-xVals  = [-1, 11];  # -0.5; 1.5                                                  # X-grid extents [min, max]
-yVals  = [-1, 11];  #-0.3;0.3                                                 # Y-grid extents [min, max]
+nGridX = 30;                                                           # X-grid for streamlines and contours
+nGridY = 30;                                                           # Y-grid for streamlines and contours
+xVals  = [-1, 21];  # -0.5; 1.5                                                  # X-grid extents [min, max]
+yVals  = [-1, 21];  #-0.3;0.3                                                 # Y-grid extents [min, max]
     
 # Streamline parameters
 stepsize = 0.1;   #0.01                                                     # Step size for streamline propagation
@@ -132,8 +132,8 @@ slPct    = 25;                                                          # Percen
 
 
  # Create an array of starting points for the streamlines
-x_range = np.linspace(0, 10, int((10-0)/0.5) + 1)
-y_range = np.linspace(0, 10, int((10-0)/0.5) + 1)
+x_range = np.linspace(0, 20, int((20-0)/0.75) + 1)
+y_range = np.linspace(0, 20, int((20-0)/0.75) + 1)
 
 x_1 = np.zeros(len(y_range))
 y_1 = np.zeros(len(x_range))
@@ -173,7 +173,7 @@ CpXY = 1 - Vxy**2
 fig = plt.figure(5)
 plt.cla()
 np.seterr(under="ignore")
-plt.streamplot(XX,YY,Vxe,Vye,linewidth=0.5,density=40,color='r',arrowstyle='-',start_points=XYsl)
+plt.streamplot(XX,YY,Vxe,Vye,linewidth=1.0,density=80,color='r',arrowstyle='-',start_points=XYsl) # density = 40
 plt.grid(True)
 #plt.plot(XX,YY,marker='o',color='blue')
 plt.axis('equal')
