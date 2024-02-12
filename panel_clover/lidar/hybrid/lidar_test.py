@@ -26,6 +26,8 @@ from tf.transformations import euler_from_quaternion
 
 import numpy as np
 
+import time
+
 # Could plot the stored data in SITL (not hardware) if desired:
 import matplotlib.pyplot as plt
 from matplotlib import path
@@ -65,9 +67,19 @@ YawL = []
 YawF = []
 YawC = []
 
-# Circle obstacle plot
-xa = []
-ya = []
+# Check local/before global transformation
+xloc = []
+yloc = []
+xloc_orig = []
+yloc_orig = []
+
+# 3D transform logging
+x3 = []
+y3 = []
+
+# Unmodified measurements
+x_orig = []
+y_orig = []
 
 # Analyze control input (see if error is being minimized )
 velfx=[]
@@ -81,73 +93,210 @@ evy=[]
 eyaw=[]
 
 
-			
+# Initialize variables to keep track of time
+start = time.time()
+log_interval = 1  # Log data every 5 seconds		
 
 		
-lidar_angles = np.linspace(-180*(math.pi/180), 180*(math.pi/180), 360) # generate the array of lidar angles
+# lidar_angles = np.linspace(-180*(math.pi/180), 180*(math.pi/180), 360) # generate the array of lidar angles
+lidar_angles = np.arange(-3.141590118408203, 3.141590118408203, 0.017501894384622574)
+
+
+
+def euler_to_rotation_matrix(roll, pitch, yaw):
+    """
+    Convert Euler angles to rotation matrix.
+    """
+    # Convert degrees to radians
+    # roll = math.radians(roll)
+    # pitch = math.radians(pitch)
+    # yaw = math.radians(yaw)
+    
+    # Compute rotation matrices
+    R_roll = np.array([[1, 0, 0],
+                       [0, math.cos(roll), -math.sin(roll)],
+                       [0, math.sin(roll), math.cos(roll)]])
+    
+    R_pitch = np.array([[math.cos(pitch), 0, math.sin(pitch)],
+                        [0, 1, 0],
+                        [-math.sin(pitch), 0, math.cos(pitch)]])
+    
+    R_yaw = np.array([[math.cos(yaw), -math.sin(yaw), 0],
+                      [math.sin(yaw), math.cos(yaw), 0],
+                      [0, 0, 1]])
+    
+    # Combine rotation matrices
+    R = np.dot(R_yaw, np.dot(R_pitch, R_roll))
+    
+    return R
 
 		
 		
 def lidar_read(data):
+
+	global start  # Declare start_time as global
+	
 	
 		# The angles and ranges start at -45 degrees i.e. at the right side, then go counter clockwise up to the top i.e. 45 degrees
 	ranges = data.ranges
-	
-	angles = lidar_angles
-	
-	
-	telem = get_telemetry(frame_id='map')
-		
-	x_clover = telem.x
-	y_clover = telem.y
-	yaw = telem.yaw
 
-	# put a safety factor on the detected obstacle
-			# Reduce the range by a constant beta for each real range (set as diameter of the clover)
-	beta = 0.1
-	# Convert ranges to a NumPy array if it's not already
-	ranges = np.array(ranges)
-	# Subtract beta only from non-infinite values
-	# Create a mask for non-infinite values
-	non_inf_mask = np.isfinite(ranges)
+	# Ensure there are actually lidar readings, no point in doing calculations if
+		# nothing is detected:
+	if any(not np.isinf(range_val) for range_val in ranges):
+	
+		angles = lidar_angles
+		
+		
+		telem = get_telemetry(frame_id='map')
+			
+		x_clover = telem.x
+		y_clover = telem.y
+		z_clover = telem.z
+		yaw = telem.yaw
+		roll = telem.yaw
+		pitch = telem.pitch
 
-	# Subtract beta only from non-infinite values
-	# print(ranges)
-	ranges = np.where(non_inf_mask, ranges - beta, ranges)
-	# print(ranges)
+
+		# Convert ranges to a NumPy array if it's not already
+		ranges = np.array(ranges)
+		ranges_orig = np.array(ranges) # store the unmodified ranges
+			
+			# Polar to Cartesion transformation for all readings (assuming angles are in standard polar coordinates).
+		x_local = ranges*np.cos(angles)
+		y_local = ranges*np.sin(angles)
+
+		x_local_orig = ranges_orig*np.cos(angles)
+		y_local_orig = ranges_orig*np.sin(angles)
+	#---------------- Safety factor-----------------------------------------------
+		# put a safety factor on the detected obstacle
+				# Reduce the range by a scaling factor beta for each real range (set as diameter of the clover)
+		beta = 1.3 # Scale object and shift
+		# Combine xdata and ydata into a single array of points
+		points = np.column_stack((x_local, y_local))
+
+		# Find the point closest to the origin
+		min_distance_index = np.argmin(np.linalg.norm(points, axis=1))
+		closest_point = points[min_distance_index]
+
+		# Step 2: Shift all points so that the closest point becomes the origin
+		shifted_points = points - closest_point
+
+		# Step 3: Scale all points by a factor beta
+		scaled_points = shifted_points * beta
+
+		# Step 4: Shift all points back to their original positions
+		final_points = scaled_points + closest_point
+
+		# Calculate the distance to move the closest point
+		desired_distance = 0.5
+
+		# Calculate the current distance to the origin for the closest point
+		current_distance = np.linalg.norm(closest_point)
+
+		# Calculate the unit vector in the direction of the closest point
+		unit_vector = closest_point / current_distance
+
+		# Calculate the new position for the closest point
+		new_closest_point = unit_vector * (current_distance - desired_distance)
+
+		# Calculate the difference vector
+		shift_vector = closest_point - new_closest_point
+
+		# Shift all points including the closest point
+		shifted_points = final_points - shift_vector
+
+
+		# translate the shape equally to the origin (To clover)
+		x_local = shifted_points[:,0]
+		y_local = shifted_points[:,1]
 		
-		# Polar to Cartesion transformation for all readings (assuming angles are in standard polar coordinates).
-	x_local = ranges*np.cos(angles)
-	y_local = ranges*np.sin(angles)
-		
-		# Homogenous transformation matrix for 2D
-	R = np.array([[math.cos(yaw), -math.sin(yaw)], [math.sin(yaw), math.cos(yaw)]]) # rotation matrix
-	T = np.vstack([np.hstack([R, np.array([[x_clover], [y_clover]])]),[0,0,1]]) # Homogenous transformation matrix
-		
+
+	#---------------------------------------------------------------------------------
+			# Homogenous transformation matrix for 2D
+		R = np.array([[math.cos(yaw), -math.sin(yaw)], [math.sin(yaw), math.cos(yaw)]]) # rotation matrix
+		T = np.vstack([np.hstack([R, np.array([[x_clover], [y_clover]])]),[0,0,1]]) # Homogenous transformation matrix
+
+
 		# Lidar readings in homogenous coordinates
-	readings_local = np.vstack([x_local, y_local, np.ones_like(x_local)])
-		
-		# Transform all lidar readings to global coordinates
-	readings_global = np.dot(T, readings_local)
-		
-		# Extract the tranformed positions
-	readings_global = readings_global[:2,:].T
+		readings_local = np.vstack([x_local, y_local, np.ones_like(x_local)])
+		readings_local_orig = np.vstack([x_local_orig, y_local_orig, np.ones_like(x_local_orig)])
+			
+			
+			# Transform all lidar readings to global coordinates
+		readings_global = np.dot(T, readings_local)
+		readings_global_orig = np.dot(T, readings_local_orig)
+			
+			# Extract the tranformed positions
+		readings_global = readings_global[:2,:].T
+		readings_global_orig = readings_global_orig[:2,:].T
 
-	#print(readings_global)
-	xa = readings_global[:,0]
-	ya = readings_global[:,1]
+		#print(readings_global)
+		xa = readings_global[:,0]
+		ya = readings_global[:,1]
+
+		xa_orig = readings_global_orig[:,0]
+		ya_orig = readings_global_orig[:,1]
+
+		
+
+	#-----------------improve with 3D transofmation-----------------------------------
+
+		# Compute 2D transformation matrix
+		# Compute rotation matrix
+		R_3D = euler_to_rotation_matrix(roll, pitch, yaw)
+		# Homogeneous transformation matrix
+		T_3D = np.vstack([np.hstack([R_3D, np.array([[x_clover], [y_clover], [z_clover]])]), [0, 0, 0, 1]])
+		# T_3D = np.vstack([np.hstack([R_3D, np.array([[x_clover], [y_clover], [0]])]), [0, 0, 1]])
+
+		# Lidar readings in homogeneous coordinates
+		readings_local_3D = np.vstack([x_local, y_local, np.ones_like(x_local), np.ones_like(x_local)])
+	# Transform lidar readings to global coordinates
+		readings_global_3D = np.dot(T_3D, readings_local_3D)
+		
+		# Extract the transformed positions
+		readings_global_3D = readings_global_3D[:2, :].T
+
+		xa1 = readings_global[:,0]
+		ya1 = readings_global[:,1]
+
+		# Check if it's time to log data
+		if time.time() - start >= log_interval:
+		
+			# Append row after row of data (to log readings)
+			xf.append(xa.tolist())
+			yf.append(ya.tolist())
+			xloc.append(x_local.tolist())
+			yloc.append(y_local.tolist())
+			xloc_orig.append(x_local_orig.tolist())
+			yloc_orig.append(y_local_orig.tolist())
+
+
+			x_orig.append(xa_orig.tolist())
+			y_orig.append(ya_orig.tolist())
+
+			# Append row after row of data (to log readings)
+			x3.append(xa1.tolist())
+			y3.append(ya1.tolist())
+			# Reset start time
+			start = time.time()
+
 	
-	# Append row after row of data (to log readings)
-	xf.append(xa.tolist())
-	yf.append(ya.tolist())
+    
+		
+		
 
 def main():
 
 	# Subscribe to the Lidar readings
 	lidar = rospy.Subscriber('/ray_scan',LaserScan,lidar_read)
-		
 
-	
+	# navigate(x=0.0,y=0.0,z = 0.5, frame_id='map',auto_arm=True) 
+	# rospy.sleep(6)
+	# navigate(x=1.5,y=1,z = 0.5, frame_id='map')
+	# rospy.sleep(6)
+	# navigate(x=0,y=0,z = 0.5, frame_id='map')
+	# rospy.sleep(7)
+	# land()
 	
 		
 		
@@ -155,9 +304,6 @@ def main():
 	rospy.spin()
 
 		
-			
-			
-			
 			
 			
 	
@@ -175,7 +321,30 @@ if __name__ == '__main__':
 			plt.plot(x_row,y_row, '-o',label=f'Reading {len(plt.gca().lines)}')
 			#plt.fill(xa,ya,'k')
 		plt.grid(True)
+		plt.axis('equal')
+		for x_row, y_row in zip(x_orig, y_orig):
+			plt.plot(x_row,y_row, '-o',label=f'Orig {len(plt.gca().lines)}')
 		plt.legend()
+
+		plt.figure(2)
+		for x_row, y_row in zip(x3, y3):
+			plt.plot(x_row,y_row, '-o',label=f'Reading {len(plt.gca().lines)}')
+			#plt.fill(xa,ya,'k')
+		plt.grid(True)
+		plt.axis('equal')
+		plt.legend()
+
+		plt.figure(3)
+		for x_row, y_row in zip(xloc, yloc):
+			plt.plot(x_row,y_row, '-o',label=f'Reading {len(plt.gca().lines)}')
+			#plt.fill(xa,ya,'k')
+		for x_row, y_row in zip(xloc_orig, yloc_orig):
+			plt.plot(x_row,y_row, '-o',label=f'Orig {len(plt.gca().lines)}')
+		plt.grid(True)
+		plt.legend()
+		plt.axis('equal')
+		plt.show()
+		
 		plt.show()
 		
 		
