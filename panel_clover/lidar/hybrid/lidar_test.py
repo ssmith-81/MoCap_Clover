@@ -14,6 +14,7 @@ from clover import srv
 from std_srvs.srv import Trigger
 import math
 from geometry_msgs.msg import Point, PoseStamped, TwistStamped
+from gazebo_msgs.msg import ModelState, LinkStates
 import tf
 from std_msgs.msg import String
 from sensor_msgs.msg import Imu, LaserScan
@@ -23,6 +24,7 @@ from panel_functions import CLOVER_COMPONENTS, CLOVER_STREAM_GEOMETRIC_INTEGRAL,
 #from scipy.interpolate import griddata
 
 from tf.transformations import euler_from_quaternion
+from scipy.spatial.transform import Rotation  #[w,x,y,z]
 
 import numpy as np
 
@@ -95,12 +97,20 @@ eyaw=[]
 
 # Initialize variables to keep track of time
 start = time.time()
-log_interval = 1  # Log data every 5 seconds		
+log_interval = 2  # Log data every 5 seconds		
 
 		
-# lidar_angles = np.linspace(-180*(math.pi/180), 180*(math.pi/180), 360) # generate the array of lidar angles
-lidar_angles = np.arange(-3.141590118408203, 3.141590118408203, 0.017501894384622574)
+lidar_angles = np.linspace(-180*(math.pi/180), 180*(math.pi/180), 360) # generate the array of lidar angles
+# lidar_angles = np.arange(-3.141590118408203, 3.141590118408203, 0.017501894384622574)
 
+def link_states_callback(msg):
+	global clover_pose
+	try:
+		index = msg.name.index('clover::base_link')
+	except ValueError:
+		return
+
+	clover_pose = msg.pose[index]
 
 
 def euler_to_rotation_matrix(roll, pitch, yaw):
@@ -147,15 +157,27 @@ def lidar_read(data):
 		angles = lidar_angles
 		
 		
-		telem = get_telemetry(frame_id='map')
+		# telem = get_telemetry(frame_id='map')
 			
-		x_clover = telem.x
-		y_clover = telem.y
-		z_clover = telem.z
-		yaw = telem.yaw
-		roll = telem.yaw
-		pitch = telem.pitch
+		x_clover = clover_pose.position.x
+		y_clover = clover_pose.position.y
+		z_clover = clover_pose.position.z
+		quaternion = [clover_pose.orientation.w,clover_pose.orientation.x, clover_pose.orientation.y, clover_pose.orientation.z ]
+		euler_angles = euler_from_quaternion(quaternion)
+		roll = euler_angles[2] 
+		yaw = -euler_angles[0]+math.pi #- PI_2
+		pitch = euler_angles[1]
 
+		r = Rotation.from_quat(quaternion)
+
+		roll_pitch_yaw = r.as_euler('xyz')#, degrees=True)
+		
+		yaw_s = roll_pitch_yaw[0]
+		pitch_s = roll_pitch_yaw[1]
+		yaw_s = roll_pitch_yaw[2]
+
+		print(euler_angles)
+		print(roll_pitch_yaw)
 
 		# Convert ranges to a NumPy array if it's not already
 		ranges = np.array(ranges)
@@ -165,50 +187,56 @@ def lidar_read(data):
 		x_local = ranges*np.cos(angles)
 		y_local = ranges*np.sin(angles)
 
+		# This transforms to the local Lidar frame where the y-axis is forward
+			# and the x-axis is pointing right:
+		# x_local = ranges*np.sin(angles)
+		# x_local = np.multiply(x_local,-1)
+		# y_local = ranges*np.cos(angles)
+
 		x_local_orig = ranges_orig*np.cos(angles)
 		y_local_orig = ranges_orig*np.sin(angles)
 	#---------------- Safety factor-----------------------------------------------
-		# put a safety factor on the detected obstacle
-				# Reduce the range by a scaling factor beta for each real range (set as diameter of the clover)
-		beta = 1.3 # Scale object and shift
-		# Combine xdata and ydata into a single array of points
-		points = np.column_stack((x_local, y_local))
+		# # put a safety factor on the detected obstacle
+		# 		# Reduce the range by a scaling factor beta for each real range (set as diameter of the clover)
+		# beta = 1.3 # Scale object and shift
+		# # Combine xdata and ydata into a single array of points
+		# points = np.column_stack((x_local, y_local))
 
-		# Find the point closest to the origin
-		min_distance_index = np.argmin(np.linalg.norm(points, axis=1))
-		closest_point = points[min_distance_index]
+		# # Find the point closest to the origin
+		# min_distance_index = np.argmin(np.linalg.norm(points, axis=1))
+		# closest_point = points[min_distance_index]
 
-		# Step 2: Shift all points so that the closest point becomes the origin
-		shifted_points = points - closest_point
+		# # Step 2: Shift all points so that the closest point becomes the origin
+		# shifted_points = points - closest_point
 
-		# Step 3: Scale all points by a factor beta
-		scaled_points = shifted_points * beta
+		# # Step 3: Scale all points by a factor beta
+		# scaled_points = shifted_points * beta
 
-		# Step 4: Shift all points back to their original positions
-		final_points = scaled_points + closest_point
+		# # Step 4: Shift all points back to their original positions
+		# final_points = scaled_points + closest_point
 
-		# Calculate the distance to move the closest point
-		desired_distance = 0.5
+		# # Calculate the distance to move the closest point
+		# desired_distance = 0.5
 
-		# Calculate the current distance to the origin for the closest point
-		current_distance = np.linalg.norm(closest_point)
+		# # Calculate the current distance to the origin for the closest point
+		# current_distance = np.linalg.norm(closest_point)
 
-		# Calculate the unit vector in the direction of the closest point
-		unit_vector = closest_point / current_distance
+		# # Calculate the unit vector in the direction of the closest point
+		# unit_vector = closest_point / current_distance
 
-		# Calculate the new position for the closest point
-		new_closest_point = unit_vector * (current_distance - desired_distance)
+		# # Calculate the new position for the closest point
+		# new_closest_point = unit_vector * (current_distance - desired_distance)
 
-		# Calculate the difference vector
-		shift_vector = closest_point - new_closest_point
+		# # Calculate the difference vector
+		# shift_vector = closest_point - new_closest_point
 
-		# Shift all points including the closest point
-		shifted_points = final_points - shift_vector
+		# # Shift all points including the closest point
+		# shifted_points = final_points - shift_vector
 
 
-		# translate the shape equally to the origin (To clover)
-		x_local = shifted_points[:,0]
-		y_local = shifted_points[:,1]
+		# # translate the shape equally to the origin (To clover)
+		# x_local = shifted_points[:,0]
+		# y_local = shifted_points[:,1]
 		
 
 	#---------------------------------------------------------------------------------
@@ -290,12 +318,15 @@ def main():
 	# Subscribe to the Lidar readings
 	lidar = rospy.Subscriber('/ray_scan',LaserScan,lidar_read)
 
+	# Subscribe directly to the ground truth
+	ground_truth = rospy.Subscriber('gazebo/link_states', LinkStates, link_states_callback)
+
 	# navigate(x=0.0,y=0.0,z = 0.5, frame_id='map',auto_arm=True) 
 	# rospy.sleep(6)
-	# navigate(x=1.5,y=1,z = 0.5, frame_id='map')
-	# rospy.sleep(6)
-	# navigate(x=0,y=0,z = 0.5, frame_id='map')
-	# rospy.sleep(7)
+	# navigate(x=10,y=10,z = 0.5,speed=0.7, frame_id='map')
+	# rospy.sleep(20)
+	# navigate(x=0,y=0,z = 0.5,speed=0.7, frame_id='map')
+	# rospy.sleep(15)
 	# land()
 	
 		
