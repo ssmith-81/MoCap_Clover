@@ -104,12 +104,41 @@ def CLOVER_KUTTA(I, trail_point, xa, ya, phi, Sj, n, flagKutta, rhs, U_inf, V_in
 
     # This is for a sail like object i.e. lidar detection (non closed object)
     if flagKutta[2] == 1: # gamma_N = 0 -> slow smoothly off end of sail (panel at the end point)
-        I[n, 0] = 0
-        I[n, n-1] = 1  # gamma_N = rhs[n] = 0 
+        I[n, 0] = 1
+        I[n, n-1] = 0  # gamma_N = rhs[n] = 0 
         I[n, n] = 0  # stream_function/psi position
         rhs[n] = 0
         for j in range(1, n-1):
             I[n, j] = 0
+
+    # This is for an extended trail point for a non-closed sail like object
+    if flagKutta[3] == 1:
+            rhs[n] = trail_point[1] * U_inf - trail_point[0] * V_inf + (g_source / (2 * np.pi)) * np.arctan2(
+                trail_point[1] - ys, trail_point[0] - xs) - (g_sink / (2 * np.pi)) * np.arctan2(
+                trail_point[1] - ysi, trail_point[0] - xsi) + (g_clover / (2*np.pi))*np.arctan2(trail_point[1] - y_cl, trail_point[0] - x_cl) # add random source here to see what happens
+
+            for j in range(n+1):
+                if j == n:
+                    I[n, j] = 1  # Equation (16)
+                else:
+                    x_o = trail_point[0] - xa[j]
+                    y_o = trail_point[1] - ya[j]
+
+                    # Rotate about origin o to complete the transformation
+                    xbar = x_o * np.cos(phi[j]) + y_o * np.sin(phi[j])
+                    ybar = -x_o * np.sin(phi[j]) + y_o * np.cos(phi[j])
+
+                    # Calculate r1 and r2 between the current panel j endpoints and the current control point i
+                    r1 = np.sqrt(xbar**2 + ybar**2)
+                    r2 = np.sqrt((xbar - Sj[j])**2 + ybar**2)
+
+                    # Calculate omega angles between each control point i
+                    # and each panel endpoints j (store for calculating normal and tangential velocities later):
+                    omega1 = np.arctan2(ybar, xbar)
+                    omega2 = np.arctan2(ybar, xbar - Sj[j])
+
+                    # Compute I_(i,j) geometric values for each panel j on control point i
+                    I[n, j] = -(1 / (2 * np.pi)) * (xbar * np.log(r2 / r1) - Sj[j] * np.log(r2) + ybar * (omega1 - omega2))
 
     return I, rhs
 

@@ -13,10 +13,11 @@ from clover_functions import CLOVER_COMPONENTS, CLOVER_STREAM_GEOMETRIC_INTEGRAL
 np.seterr(divide='ignore', invalid='ignore')  # Ignore division by zero and invalid value warnings
 
 # Kutta condition flag (decide which one to use)
-flagKutta = np.array([0, 0, 1])
+flagKutta = np.array([0, 0, 1,0])
 		# position 0 is for smooth flow off edge for closed object
 		# position 1 is for smooth flow off ege for closed object using point extended into space a small amount
 		# position 2 is for smooth flow off the edge of a non closed i.e. sail detection with lidar
+        # position 3 is for smooth flow off an extended edge of a non closed i.e. sail detection with lidar. Adds safety factor to direct flow away from object
 
 nacaseries = input('Enter the 4-digit naca series = ')
 c = float(input('Enter the chord length = '))
@@ -45,7 +46,11 @@ center1 = np.array([5, 5])
 radius1 = 2
 
 # theta1 = np.linspace(0, -2 * np.pi, n + 1) 
-theta1 = np.linspace(225 * np.pi / 180, 405 * np.pi / 180, n + 1)
+# theta1 = np.linspace(225 * np.pi / 180, 405 * np.pi / 180, n + 1) # ccw rotation
+# theta1 = np.linspace(225 * np.pi / 180, 45 * np.pi / 180, n + 1) # CW rotation
+theta1 = np.linspace(270 * np.pi / 180, 135 * np.pi / 180, n + 1) # CCW rotation
+# theta1 = np.linspace(135 * np.pi / 180, 270 * np.pi / 180, n + 1) # CW rotation
+
 xa = center1[0] + radius1 * np.cos(theta1)
 ya = center1[1] + radius1 * np.sin(theta1)
 
@@ -66,8 +71,26 @@ xtrail = (radius1 + 0.001) * np.cos(45 * np.pi / 180)
 ytrail = (radius1 + 0.001) * np.sin(45 * np.pi / 180)
 trail_point = np.array([center1[0], center1[1]]) + np.array([xtrail, ytrail])
 
+# # Calculate the extended edge point for the sail extended kutta condition
+# ext_dist = 1.0
+
+# # Direction vector of final panel in general frame
+# # directionVect = [xa[-1] - xa[-2], ya[-1] - ya[-2]]
+# directionVect = [xa[0] - xa[1], ya[0] - ya[1]]
+# # normalize the direction vector
+# directionVect = directionVect / np.linalg.norm(directionVect)
+# # Calculate the coordinates of the extended point in the general frame
+# # extendedX = xa[-1] + ext_dist*directionVect[0]
+# # extendedY = ya[-1] + ext_dist*directionVect[1]
+# extendedY = ya[0] + ext_dist*directionVect[1]
+# extendedX = xa[0] + ext_dist*directionVect[0]
+
+# # coordinates of the translated point off the trailing edge
+# trail_point = [extendedX, extendedY]
+
 # Evaluate gemoetric integral matrix without the kutta condition equation
 I = CLOVER_STREAM_GEOMETRIC_INTEGRAL(xmid, ymid, xa, ya, phi, Sj, n)
+
 
 # Form the last line of the system of equations with the kutta condition
 [I, rhs] = CLOVER_KUTTA(I, trail_point, xa, ya, phi, Sj, n, flagKutta, rhs, U_inf, V_inf, xs, ys, xsi, ysi, g_source, g_sink, g_clover, x_cl, y_cl)
