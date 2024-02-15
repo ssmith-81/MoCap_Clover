@@ -146,6 +146,9 @@ class clover:
 
 
 #---------------------------------------------------------------------------------------------------
+
+	
+
 		# iNITIALIZE INPUT VELOCITY VALUES
 		self.u = 0
 		self.v = 0
@@ -416,6 +419,10 @@ class clover:
 			# Extract the tranformed positions
 			self.readings_global = self.readings_global[:2,:].T
 
+	#-------------------Velocity field update logic----------------------------------
+			self.start_velocity_update() # start the velocity field updating now that an obstacle is detected
+			
+
 			# # Dont want to update these here!! we are using in controller and if the values are updated mid calculation for velocity itll cause many issues
 			# # This is updating faster then the velocity controller calculations
 			# self.xa = readings_global[:,0].T
@@ -454,6 +461,7 @@ class clover:
 		# 	# Extract the transformed positions
 		# 	self.readings_global = self.readings_global[:2, :].T
 
+	
 	def velocity_field_update(self, event=None):
 
 		# this needs to run periodically to update the velocity field. But not too much as it is very compuationally expensive, maybe run as a thread or something
