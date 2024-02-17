@@ -77,10 +77,10 @@ xa_orig = []
 ya_orig = []
 
 # updated velocity field plot
-nGridX = 20                                                           # X-grid for streamlines and contours
-nGridY = 20                                                           # Y-grid for streamlines and contours
-x_field = np.zeros((nGridX, nGridY))
-y_field = np.zeros((nGridX, nGridY))
+nGridX = 25  # 20                                                         # X-grid for streamlines and contours
+nGridY = 25  # 20                                                       # Y-grid for streamlines and contours
+x_field = np.zeros((nGridX, nGridY))# np.zeros((30, 30))
+y_field = np.zeros((nGridX, nGridY)) # np.zeros((30, 30))
 u_field = np.zeros((nGridX, nGridY))
 v_field = np.zeros((nGridX, nGridY))
 lidar_x = []
@@ -103,7 +103,7 @@ eyaw=[]
 
 # Create a HDF5 file name
 # Open the HDF5 file globally
-file_name = 'velocity_field.h5'
+file_name = 'test_run.h5'
  # Open the HDF5 file for writing
 with h5py.File(file_name, 'a') as hf:
 
@@ -121,7 +121,7 @@ with h5py.File(file_name, 'a') as hf:
             self.ysi = 20
 
             # Define the source strength and location
-            self.g_source = 0.75
+            self.g_source = 0.8
             self.xs = -0.1
             self.ys = -0.1
             # self.xs = 5
@@ -143,7 +143,7 @@ with h5py.File(file_name, 'a') as hf:
 
 
             # Kutta condition flag (decide which one to use)
-            self.flagKutta = np.array([0, 0, 1,0])
+            self.flagKutta = np.array([0, 0, 0,1])
             # position 0 is for smooth flow off edge for closed object
             # position 1 is for smooth flow off ege for closed object using point extended into space a small amount
             # position 2 is for smooth flow off the edge of a non closed i.e. sail detection with lidar
@@ -177,10 +177,14 @@ with h5py.File(file_name, 'a') as hf:
             ## Compute Streamlines with stream function velocity equation
             # Too many gridpoints is not good, it will cause the control loop to run too slow
             # Grid parameters
-            self.nGridX = 20;                                                           # X-grid for streamlines and contours
-            self.nGridY = 20;                                                           # Y-grid for streamlines and contours
-            xVals  = [-1, 21];  # ensured it is extended past the domain incase the clover leaves domain             # X-grid extents [min, max]
-            yVals  = [-1, 21];  #-0.3;0.3                                                 # Y-grid extents [min, max]
+            self.nGridX = 25;  # 20 is good                                                         # X-grid for streamlines and contours
+            self.nGridY = 25;  # 20 is good                                                    # Y-grid for streamlines and contours
+            self.xVals  = [-1, 21];  # ensured it is extended past the domain incase the clover leaves domain             # X-grid extents [min, max]
+            self.yVals  = [-1, 21];  #-0.3;0.3                                                 # Y-grid extents [min, max]
+
+            # Define Lidar range (we will set parameters to update grid resolution within detection range):
+            self.lidar_range = 3.5 # [m]
+            self.lidar_resolution = 0.5 # grid resolution within the lidar ranges
 
             # Streamline parameters
             stepsize = 0.1;   #0.01                                                     # Step size for streamline propagation
@@ -199,8 +203,8 @@ with h5py.File(file_name, 'a') as hf:
             XYsl = np.vstack((Xsl,Ysl)).T
 
             # Generate the grid points
-            Xgrid = np.linspace(xVals[0], xVals[1], self.nGridX)
-            Ygrid = np.linspace(yVals[0], yVals[1], self.nGridY)
+            Xgrid = np.linspace(self.xVals[0], self.xVals[1], self.nGridX)
+            Ygrid = np.linspace(self.yVals[0], self.yVals[1], self.nGridY)
             self.XX, self.YY = np.meshgrid(Xgrid, Ygrid)
 
             self.Vxe = np.zeros((self.nGridX, self.nGridY))
@@ -356,19 +360,19 @@ with h5py.File(file_name, 'a') as hf:
             # if any(not np.isinf(range_val) for range_val in self.obs_detect):
 
                 # The angles and ranges start at -180 degrees i.e. at the right side, then go counter clockwise up to the top i.e. 180 degrees
-                ranges = data.ranges
+                self.ranges = data.ranges
 
                 angles = self.lidar_angles
 
 
                 # Convert ranges to a NumPy array if it's not already
-                ranges = np.array(ranges)
-                ranges_orig = np.array(ranges) # store the unmodified ranges
+                self.ranges = np.array(self.ranges)
+                ranges_orig = np.array(self.ranges) # store the unmodified ranges
 
 
                 # Polar to Cartesion transformation for all readings (assuming angles are in standard polar coordinates) y-axis is left and x-axis is directly forward.
-                x_local = ranges*np.cos(angles)
-                y_local = ranges*np.sin(angles)
+                self.x_local = self.ranges*np.cos(angles)
+                y_local = self.ranges*np.sin(angles)
 
                 # This transforms to the local Lidar frame where the y-axis is forward
                 # and the x-axis is pointing right:
@@ -384,7 +388,7 @@ with h5py.File(file_name, 'a') as hf:
                 # Reduce the range by a scaling factor beta for each real range (set as diameter of the clover)
                 beta = 1.7 # Scale object and shift
                 # Combine xdata and ydata into a single array of points
-                points = np.column_stack((x_local, y_local))
+                points = np.column_stack((self.x_local, y_local))
 
                 # Find the point closest to the origin
                 min_distance_index = np.argmin(np.linalg.norm(points, axis=1))
@@ -419,7 +423,7 @@ with h5py.File(file_name, 'a') as hf:
 
 
                 # translate the shape equally to the origin (To clover)
-                x_local = shifted_points[:,0]
+                self.x_local = shifted_points[:,0]
                 y_local = shifted_points[:,1]
 
 
@@ -431,7 +435,7 @@ with h5py.File(file_name, 'a') as hf:
                 T = np.vstack([np.hstack([R, np.array([[x_clover], [y_clover]])]),[0,0,1]]) # Homogenous transformation matrix
 
                 # Lidar readings in homogenous coordinates
-                readings_local = np.vstack([x_local, y_local, np.ones_like(x_local)])
+                readings_local = np.vstack([self.x_local, y_local, np.ones_like(self.x_local)])
                 readings_local_orig = np.vstack([x_local_orig, y_local_orig, np.ones_like(x_local_orig)])
 
                 # Transform all lidar readings to global coordinates
@@ -524,6 +528,14 @@ with h5py.File(file_name, 'a') as hf:
                 yaw = -euler_angles[0]+math.pi #-PI_2
                 pitch = euler_angles[1]
 
+                # # Re-Generate the grid points without modifications from detected obstacle
+                # Xgrid = np.linspace(self.xVals[0], self.xVals[1], self.nGridX)
+                # Ygrid = np.linspace(self.yVals[0], self.yVals[1], self.nGridY)
+                # self.XX, self.YY = np.meshgrid(Xgrid, Ygrid)
+
+                # self.Vxe = np.zeros((self.nGridX, self.nGridY))
+                # self.Vye = np.zeros((self.nGridX, self.nGridY))
+
 
                 self.object_detect = False
                 self.stop_velocity_update()
@@ -573,8 +585,8 @@ with h5py.File(file_name, 'a') as hf:
             self.xa = self.readings_global[:,0].T
             self.ya = self.readings_global[:,1].T
 
-            self.xa_orig = self.readings_global_orig[:,0]
-            self.ya_orig = self.readings_global_orig[:,1]
+            self.xa_orig = self.readings_global_orig[:,0].T
+            self.ya_orig = self.readings_global_orig[:,1].T
 
             # Filter every second reading i.e. take every second reading. We want to reduce the computational load on the panel method
             # So take 180 readings over 360degree span instead of 360 readings
@@ -627,21 +639,83 @@ with h5py.File(file_name, 'a') as hf:
             # Evaluate gemoetric integral matrix without the kutta condition equation
             I = CLOVER_STREAM_GEOMETRIC_INTEGRAL(xmid, ymid, self.xa, self.ya, phi, Sj, self.n)
 
+#-----------------------extended kutta condition---------------------------------------------------------
             # Extended point off of the end of the object for kutta condition
             # Calculate the extended edge point for the sail extended kutta condition
-            ext_dist = 0.1
+            ext_dist = 1.0
 
-            # Direction vector of final panel in general frame
-            directionVect = [self.xa[-1] - self.xa[-2], self.ya[-1] - self.ya[-2]] # off the end of the clockwise ending panel
-            # directionVect = [self.xa[0] - self.xa[1], self.ya[0] - self.ya[1]] # off the end of the CCW/right ending panel
-            # normalize the direction vector
-            directionVect = directionVect / np.linalg.norm(directionVect)
-            # Calculate the coordinates of the extended point in the general frame
-            extendedX = self.xa[-1] + ext_dist*directionVect[0]
-            extendedY = self.ya[-1] + ext_dist*directionVect[1]
+
+            finite_indices = np.where(np.isfinite(self.x_local))[0] # find where the indices are finite in the clover/local reference frame (this is being updated in the lidar function)
+            ang = self.lidar_angles[finite_indices] # select the angles that are finite readings
+
+            # Step 3: Compute the sums for left and right sides using array operations
+            left_sum = np.sum(ang[ang > 0])
+            right_sum = np.sum(ang[ang < 0])
+
+            # Determine which side has the obstacle closer
+            if left_sum > abs(right_sum):
+                print("Obstacle is more to the left.")
+                #---------Object is more to the left of the clover when detecting-------------
+                # this is intuitively backwards, you would think you would have to extend the kutta off the right side of the object
+                # if the object was more to the left of the clover so we could go around the irght side of the object.
+
+                directionVect = [self.xa[-1] - self.xa[-2], self.ya[-1] - self.ya[-2]] # off the end of the clockwise ending panel
+                directionVect = directionVect / np.linalg.norm(directionVect)
+                # normalize the direction vector
+                
+                # Calculate the coordinates of the extended point in the general frame
+                extendedX = self.xa[-1] + ext_dist*directionVect[0]
+                extendedY = self.ya[-1] + ext_dist*directionVect[1]
+
+                #---------Log intuitive trail point for the plots in paper-------------
+                q  = [self.xa[0] - self.xa[1], self.ya[0] - self.ya[1]] 
+                q  = q / np.linalg.norm(q)
+
+                int_Y = self.ya[0] + ext_dist*q[1]
+                int_X = self.xa[0] + ext_dist*q[0]
+
+                trail_intuitive = [int_X, int_Y]
+
+            elif left_sum < abs(right_sum):
+                print("Obstacle is more to the right.")
+                #-----------Object is more to the right of the clover when detecting------------
+            # This is intuitively backwards, as you would think this would be the case for when the object is detected more in the left half 
+            # of the clover...(not sure why this works this way). This kutta condition will have the flowlines go off the left side of the object
+                directionVect = [self.xa[0] - self.xa[1], self.ya[0] - self.ya[1]] # off the end of the CCW/right ending panel
+                directionVect = directionVect / np.linalg.norm(directionVect)
+                extendedY = self.ya[0] + ext_dist*directionVect[1]
+                extendedX = self.xa[0] + ext_dist*directionVect[0]
+
+                #---------Log intuitive trail point for the plots in paper-------------
+                q  = [self.xa[-1] - self.xa[-2], self.ya[-1] - self.ya[-2]]
+                q  = q / np.linalg.norm(q)
+
+                int_Y = self.ya[-1] + ext_dist*q[1]
+                int_X = self.xa[-1] + ext_dist*q[0]
+
+                trail_intuitive = [int_X, int_Y]
+            else:
+                print("Obstacle is centered.")
+                 
+                directionVect = [self.xa[0] - self.xa[1], self.ya[0] - self.ya[1]] # off the end of the CCW/right ending panel
+                directionVect = directionVect / np.linalg.norm(directionVect)
+                extendedY = self.ya[0] + ext_dist*directionVect[1]
+                extendedX = self.xa[0] + ext_dist*directionVect[0]
+
+                #---------Log other one-------------
+                q  = [self.xa[-1] - self.xa[-2], self.ya[-1] - self.ya[-2]]
+                q  = q / np.linalg.norm(q)
+
+                int_Y = self.ya[-1] + ext_dist*q[1]
+                int_X = self.xa[-1] + ext_dist*q[0]
+
+                trail_intuitive = [int_X, int_Y]
+
+            
+           
             # coordinates of the translated point off the trailing edge
             trail_point = [extendedX, extendedY]
-
+#---------------------------------------------------------------------------------------------------------------------------------------------
             # Form the last line of the system of equations with the kutta condition 
             [I, rhs] = CLOVER_KUTTA(I, trail_point, self.xa, self.ya, phi, Sj, self.n, self.flagKutta, rhs, self.U_inf, self.V_inf, self.xs, self.ys, self.xsi, self.ysi, self.g_source, self.g_sink, self.g_clover, x_clover, y_clover)
 
@@ -654,19 +728,56 @@ with h5py.File(file_name, 'a') as hf:
 
             ## Compute Streamlines with stream function velocity equation
             # Too many gridpoints is not good, it will cause the control loop to run too slow
-            # Grid parameters
+
+            #-----Update meshgrid on and around obstacle for improved plotting-------------------------------------------
+            
+            # # Concatenate XX with xa and xa_orig
+            # XX_new = np.concatenate((self.XX[0, :], self.xa_orig[::5]))#self.xa, self.xa_orig))
+
+            # # Concatenate YY with ya and ya_orig
+            # YY_new = np.concatenate((self.YY[:, 0], self.ya_orig[::5]))#self.ya, self.ya_orig))
+
+            # # Sort XX_new and YY_new individually
+            # XX_sorted = np.sort(XX_new)
+            # YY_sorted = np.sort(YY_new)
+
+            # # Create mesh grids from the sorted XX_sorted and YY_sorted
+            # self.XX, self.YY = np.meshgrid(XX_sorted, YY_sorted)
+
+            # # Re-generated the velocity field grid size
+            # self.Vxe = np.zeros((max(XX_sorted.shape), max(YY_sorted.shape)))
+            # self.Vye = np.zeros((max(XX_sorted.shape), max(YY_sorted.shape)))
+           
+
+            #---------------------------------------------------------------
+
+            # Path to figure out if grid point is inside polygon or not
+            AF = np.vstack((self.xa,self.ya)).T
+            AF_orig = np.vstack((self.xa_orig,self.ya_orig)).T
+		    #print(AF)
+            afPath = path.Path(AF)
+            afPath_orig = path.Path(AF_orig)
 
             for m in range(self.nGridX):
                 for n in range(self.nGridY):
                     XP, YP = self.XX[m, n], self.YY[m, n]
-                    u, v = CLOVER_STREAMLINE(XP, YP, self.xa, self.ya, phi, g, Sj, self.U_inf, self.V_inf, self.xs, self.ys, self.xsi, self.ysi, self.g_source, self.g_sink, self.g_clover, x_clover, y_clover)
-                    # print(u)
-                    self.Vxe[m, n] = u
+                    # XP, YP = self.X_mesh[m, n], self.Y_mesh[m, n]
+                    # Check if the current grid point corresponds to (xa, ya) or (xa_orig, ya_orig)
+                    if  afPath_orig.contains_points([[XP,YP]]):#afPath.contains_points([[XP,YP]]) or afPath_orig.contains_points([[XP,YP]]):
+                        self.Vxe[m, n] = 0
+                        self.Vye[m, n] = 0
 
-                    self.Vye[m, n] = v
+                    else:
+                        u, v = CLOVER_STREAMLINE(XP, YP, self.xa, self.ya, phi, g, Sj, self.U_inf, self.V_inf, self.xs, self.ys, self.xsi, self.ysi, self.g_source, self.g_sink, self.g_clover, x_clover, y_clover)
+                    # print(u)
+
+                        
+                        self.Vxe[m, n] = u
+
+                        self.Vye[m, n] = v
 
             # Log the fist velocity field update reading
-            if self.count:
+            if self.count: 
                 x_field[:,:] = self.XX # Assign XX to x_field, assuming XX and x_field have the same shape
                 y_field[:,:] = self.YY
                 u_field[:,:] = self.Vxe
@@ -706,6 +817,16 @@ with h5py.File(file_name, 'a') as hf:
             iteration_group.create_dataset('ya_extend', data=self.ya)
             iteration_group.create_dataset('xa_orig', data=self.xa_orig)
             iteration_group.create_dataset('ya_orig', data=self.ya_orig)
+            # Log the trail edge kutta condition point (extended off of the extended readings, in the global frame)
+            iteration_group.create_dataset('x_trail', data=extendedX)
+            iteration_group.create_dataset('y_trail', data=extendedY)
+            # log the intuitive position of the trail point (where you think it should be for the results that come from it)
+            iteration_group.create_dataset('x_trail_intuitive', data=int_X)
+            iteration_group.create_dataset('y_trail_intuitive', data=int_Y)
+            # log the current clover position as well for plotting marker location on map plot
+            iteration_group.create_dataset('x_clover_cur', data=self.clover_pose.position.x)
+            iteration_group.create_dataset('y_clover_cur', data=self.clover_pose.position.y)
+
             #------------------------------------------
 
         def controller(self,data):
@@ -852,7 +973,7 @@ with h5py.File(file_name, 'a') as hf:
 
 
                 if math.sqrt((x_clover-self.xsi) ** 2 + (y_clover-self.ysi) ** 2) < 0.6: # 0.4
-                    navigate(x=0,y=0,z=self.FLIGHT_ALTITUDE, yaw=float('nan'), speed=0.01, frame_id = self.FRAME)
+                    navigate(x=telem.x,y=telem.y,z=self.FLIGHT_ALTITUDE, yaw=float('nan'), speed=0.01, frame_id = self.FRAME)
                     break
                 rr.sleep()
                 # rospy.spin()
@@ -976,6 +1097,7 @@ with h5py.File(file_name, 'a') as hf:
             plt.ylim(yVals)
             plt.plot(lidar_x, lidar_y,'-o' ,color = 'k',linewidth = 0.25)
             plt.plot(xf,yf,'b',label='x-fol') # path taken by clover
+            plt.plot(trail_x, trail_y, 'o')
             plt.xlabel('X Units')
             plt.ylabel('Y Units')
             plt.title('Streamlines with Stream Function Velocity Equations')
@@ -998,6 +1120,13 @@ with h5py.File(file_name, 'a') as hf:
             plt.title('Airfoil')
             plt.axis('equal')
             plt.grid(True)
+
+            plt.figure(7)
+            plt.scatter(u_field,v_field,color = 'blue', label='data-points')
+            plt.xlabel('vx-data')
+            plt.ylabel('vy-data')
+            plt.grid(True)
+            plt.legend()
 
 
             

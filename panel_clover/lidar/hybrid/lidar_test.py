@@ -149,13 +149,15 @@ def lidar_read(data):
 	
 		# The angles and ranges start at -45 degrees i.e. at the right side, then go counter clockwise up to the top i.e. 45 degrees
 	ranges = data.ranges
+	
 
 	# Ensure there are actually lidar readings, no point in doing calculations if
 		# nothing is detected:
 	if any(not np.isinf(range_val) for range_val in ranges):
 	
 		angles = lidar_angles
-		
+		print(ranges)
+		print(angles)
 		
 		# telem = get_telemetry(frame_id='map')
 			
