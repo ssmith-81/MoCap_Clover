@@ -103,7 +103,7 @@ eyaw=[]
 
 # Create a HDF5 file name
 # Open the HDF5 file globally
-file_name = 'test_run.h5'
+file_name = 'VPM_static.h5'
  # Open the HDF5 file for writing
 with h5py.File(file_name, 'a') as hf:
 
@@ -386,7 +386,7 @@ with h5py.File(file_name, 'a') as hf:
                 #---------------- Safety factor-----------------------------------------------
                 # put a safety factor on the detected obstacle
                 # Reduce the range by a scaling factor beta for each real range (set as diameter of the clover)
-                beta = 1.7 # Scale object and shift
+                beta = 2.0 # Scale object and shift
                 # Combine xdata and ydata into a single array of points
                 points = np.column_stack((self.x_local, y_local))
 
@@ -404,7 +404,7 @@ with h5py.File(file_name, 'a') as hf:
                 final_points = scaled_points + closest_point
 
                 # Calculate the distance to move the closest point
-                desired_distance = 0.3
+                desired_distance = 0.5
 
                 # Calculate the current distance to the origin for the closest point
                 current_distance = np.linalg.norm(closest_point)
@@ -654,7 +654,7 @@ with h5py.File(file_name, 'a') as hf:
 
             # Determine which side has the obstacle closer
             if left_sum > abs(right_sum):
-                print("Obstacle is more to the left.")
+                # print("Obstacle is more to the left.")
                 #---------Object is more to the left of the clover when detecting-------------
                 # this is intuitively backwards, you would think you would have to extend the kutta off the right side of the object
                 # if the object was more to the left of the clover so we could go around the irght side of the object.
@@ -677,7 +677,7 @@ with h5py.File(file_name, 'a') as hf:
                 trail_intuitive = [int_X, int_Y]
 
             elif left_sum < abs(right_sum):
-                print("Obstacle is more to the right.")
+                # print("Obstacle is more to the right.")
                 #-----------Object is more to the right of the clover when detecting------------
             # This is intuitively backwards, as you would think this would be the case for when the object is detected more in the left half 
             # of the clover...(not sure why this works this way). This kutta condition will have the flowlines go off the left side of the object
@@ -695,7 +695,7 @@ with h5py.File(file_name, 'a') as hf:
 
                 trail_intuitive = [int_X, int_Y]
             else:
-                print("Obstacle is centered.")
+                # print("Obstacle is centered.")
                  
                 directionVect = [self.xa[0] - self.xa[1], self.ya[0] - self.ya[1]] # off the end of the CCW/right ending panel
                 directionVect = directionVect / np.linalg.norm(directionVect)
@@ -888,7 +888,7 @@ with h5py.File(file_name, 'a') as hf:
             # Wait for 5 seconds
             rospy.sleep(3)
             # Takeoff to a desired altitude # x=0.2, y=2
-            navigate(x=0.5,y=0.5,z = 1, frame_id='map',auto_arm=True) # drone seems to be unstable when I set frame to map... I think there is something wrong with lidar physical values
+            navigate(x=0.5,y=0.5,z = self.FLIGHT_ALTITUDE, frame_id='map',auto_arm=True) # drone seems to be unstable when I set frame to map... I think there is something wrong with lidar physical values
 
             # Give the Clover time to reach the takeoff altitude
             rospy.sleep(15)
@@ -943,7 +943,7 @@ with h5py.File(file_name, 'a') as hf:
 
 
                 # Get current state of this follower 
-                telem = get_telemetry(frame_id='map') # should be fairly accurate now that Iam publishing ground truth data to EKF, so the velocity estimation must be decent
+                telem = get_telemetry(frame_id='map') # should be fairly accurate now that I am publishing ground truth data to EKF, so the velocity estimation must be decent
 
                 x_clover = self.clover_pose.position.x
                 y_clover = self.clover_pose.position.y
@@ -973,7 +973,16 @@ with h5py.File(file_name, 'a') as hf:
 
 
                 if math.sqrt((x_clover-self.xsi) ** 2 + (y_clover-self.ysi) ** 2) < 0.6: # 0.4
-                    navigate(x=telem.x,y=telem.y,z=self.FLIGHT_ALTITUDE, yaw=float('nan'), speed=0.01, frame_id = self.FRAME)
+                    # release()
+                    # navigate(x=self.xsi,y=self.ysi,z=self.FLIGHT_ALTITUDE, yaw=float('nan'), speed=0.2, frame_id = self.FRAME)
+                    # navigate(x=0,y=0,z=self.FLIGHT_ALTITUDE, yaw=float('nan'), speed=0.2, frame_id = self.FRAME)
+                    # navigate(x=0,y=0,z=0, yaw=float('nan'), frame_id = 'body')
+                    set_position(frame_id='body') # something weight going on with release and navigate functon, no matter what I put the navigate function
+                    # to here, it has a moment of time where it repeated what was set for lift off so starts going back to the origin. So the release function 
+                    # seems to pause it instead of shut it off completely. Therefore use the set_position function to hover on the spot (something different then 
+                    # navigate because if I call navigate, it resumes what was paused which jolts it back to the origin, before actually reading the command in 
+                    # this code block).
+                    
                     break
                 rr.sleep()
                 # rospy.spin()
